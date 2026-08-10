@@ -801,6 +801,39 @@ alias pkg-install="sudo vpm install"
 alias pkg-remove="sudo vpm remove"
 alias pkg-search="vpm search"
 
+# Modern CLI Replacement Aliases (eza, bat, ripgrep, fd, duf, btop, vsv)
+if command -v eza &>/dev/null; then
+    alias ls="eza --icons=auto"
+    alias ll="eza -la --icons=auto --git"
+    alias la="eza -a --icons=auto"
+    alias tree="eza --tree --icons=auto"
+fi
+
+if command -v bat &>/dev/null; then
+    alias cat="bat --paging=never"
+fi
+
+if command -v rg &>/dev/null; then
+    alias grep="rg"
+fi
+
+if command -v fd &>/dev/null; then
+    alias find="fd"
+fi
+
+if command -v duf &>/dev/null; then
+    alias df="duf"
+fi
+
+if command -v btop &>/dev/null; then
+    alias top="btop"
+    alias htop="btop"
+fi
+
+if command -v vsv &>/dev/null; then
+    alias services="sudo vsv"
+fi
+
 # Sourcing Nix daemon if present on system
 if [ -e "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" ]; then
     . "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"
