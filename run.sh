@@ -284,7 +284,7 @@ mod_xfce() {
     echo "=== Installing XFCE 4 Desktop & LightDM ==="
     setup_lightdm
     pkg_install \
-        xfce4 xfce4-goodies xfce4-terminal thunar ristretto catfish xfburn xfce4-panel xfce4-session xfdesktop xfwm4 \
+        xfce4 xfce4-plugins xfce4-terminal Thunar ristretto catfish xfburn xfce4-panel xfce4-session xfdesktop xfwm4 \
         xfce4-settings xfce4-power-manager xfce4-appfinder xfce4-notifyd xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin garcon exo
 }
 
@@ -292,7 +292,7 @@ mod_cinnamon() {
     echo "=== Installing Cinnamon Desktop & LightDM ==="
     setup_lightdm
     pkg_install \
-        cinnamon cinnamon-apps nemo cinnamon-screensaver cinnamon-control-center cinnamon-session cjs muffin cinnamon-desktop cinnamon-translations cinnamon-menus gnome-terminal
+        cinnamon cinnamon-all cinnamon-settings-daemon nemo cinnamon-screensaver cinnamon-control-center cinnamon-session cjs muffin cinnamon-desktop cinnamon-translations cinnamon-menus gnome-terminal
 }
 
 mod_mate() {
@@ -305,7 +305,7 @@ mod_mate() {
 mod_lxqt() {
     echo "=== Installing LXQt Desktop & SDDM ==="
     pkg_install \
-        lxqt sddm qterminal pcmanfm-qt lximage-qt pavucontrol-qt featherpad screengrab lxqt-archiver lxqt-panel lxqt-session lxqt-runner lxqt-config lxqt-notificationd lxqt-policykit lxqt-powermanagement xdg-desktop-portal-lxqt
+        lxqt sddm qterminal pcmanfm-qt lximage-qt pavucontrol-qt FeatherPad lxqt-archiver lxqt-panel lxqt-session lxqt-runner lxqt-config lxqt-notificationd lxqt-policykit lxqt-powermanagement xdg-desktop-portal-lxqt
 }
 
 mod_lxde() {
@@ -326,14 +326,14 @@ mod_sway() {
     echo "=== Installing Sway Wayland Desktop & LightDM ==="
     setup_lightdm
     pkg_install \
-        sway swaybg swaylock swayidle waybar foot wofi grim slurp mako polkit-gnome xdg-desktop-portal-wlr
+        sway swaybg swaylock swayidle Waybar foot wofi grim slurp mako polkit-gnome xdg-desktop-portal-wlr
 }
 
 mod_enlightenment() {
     echo "=== Installing Enlightenment (E25) & LightDM ==="
     setup_lightdm
     pkg_install \
-        enlightenment terminology econnman evisum elementary
+        enlightenment terminology efl rage-player
 }
 
 # --- Desktop Environment Removal Helpers ---
@@ -365,14 +365,14 @@ purge_gnome_packages() {
 purge_xfce_packages() {
     echo "Purging XFCE packages..."
     pkg_remove \
-        xfce4 xfce4-goodies xfce4-terminal thunar ristretto catfish xfburn xfce4-panel xfce4-session xfdesktop xfwm4 \
+        xfce4 xfce4-plugins xfce4-terminal Thunar ristretto catfish xfburn xfce4-panel xfce4-session xfdesktop xfwm4 \
         xfce4-settings xfce4-power-manager xfce4-appfinder xfce4-notifyd xfce4-pulseaudio-plugin xfce4-whiskermenu-plugin garcon exo
 }
 
 purge_cinnamon_packages() {
     echo "Purging Cinnamon packages..."
     pkg_remove \
-        cinnamon cinnamon-apps nemo cinnamon-screensaver cinnamon-control-center cinnamon-session cjs muffin cinnamon-desktop cinnamon-translations cinnamon-menus
+        cinnamon cinnamon-all cinnamon-settings-daemon nemo cinnamon-screensaver cinnamon-control-center cinnamon-session cjs muffin cinnamon-desktop cinnamon-translations cinnamon-menus
 }
 
 purge_mate_packages() {
@@ -384,7 +384,7 @@ purge_mate_packages() {
 purge_lxqt_packages() {
     echo "Purging LXQt packages..."
     pkg_remove \
-        lxqt qterminal pcmanfm-qt lximage-qt pavucontrol-qt featherpad screengrab lxqt-archiver lxqt-panel lxqt-session lxqt-runner lxqt-config lxqt-notificationd lxqt-policykit lxqt-powermanagement xdg-desktop-portal-lxqt
+        lxqt qterminal pcmanfm-qt lximage-qt pavucontrol-qt FeatherPad lxqt-archiver lxqt-panel lxqt-session lxqt-runner lxqt-config lxqt-notificationd lxqt-policykit lxqt-powermanagement xdg-desktop-portal-lxqt
 }
 
 purge_lxde_packages() {
@@ -402,13 +402,13 @@ purge_budgie_packages() {
 purge_sway_packages() {
     echo "Purging Sway packages..."
     pkg_remove \
-        sway swaybg swaylock swayidle waybar foot wofi grim slurp mako xdg-desktop-portal-wlr
+        sway swaybg swaylock swayidle Waybar foot wofi grim slurp mako xdg-desktop-portal-wlr
 }
 
 purge_enlightenment_packages() {
     echo "Purging Enlightenment packages..."
     pkg_remove \
-        enlightenment terminology econnman evisum elementary
+        enlightenment terminology efl rage-player
 }
 
 run_orphan_clean() {
@@ -830,7 +830,7 @@ PYEND
 
 mod_realtime_audio() {
     echo "=== Installing PipeWire Low-Latency & Realtime Audio Optimizations ==="
-    pkg_install rtkit realtime-privileges
+    pkg_install rtkit
     service_enable rtkit 2>/dev/null || true
 
     mkdir -p /etc/security/limits.d
@@ -841,6 +841,7 @@ mod_realtime_audio() {
 EOF
 
     if [ -n "$TARGET_USER" ] && id "$TARGET_USER" >/dev/null 2>&1; then
+        groupadd -r realtime 2>/dev/null || true
         usermod -aG realtime,audio "$TARGET_USER" || true
     fi
     echo "✓ Realtime audio permissions and rtkit daemon configured."
