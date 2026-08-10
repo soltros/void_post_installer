@@ -128,10 +128,11 @@ EOF
 }
 
 mod_gpu_intel() {
-    echo "=== Installing Intel GPU Drivers & Video Acceleration ==="
+    echo "=== Installing Intel GPU Drivers, CPU Microcode & Video Acceleration ==="
     pkg_install \
         xorg-minimal \
         xf86-input-libinput \
+        intel-ucode \
         mesa-dri \
         mesa-vulkan-intel \
         mesa-vulkan-intel-32bit \
@@ -152,6 +153,9 @@ LIBVA_DRIVER_NAME=iHD
 VDPAU_DRIVER=va_gl
 EOF
     fi
+
+    echo "Reconfiguring kernel initramfs for Intel microcode..."
+    xbps-reconfigure -fa 2>/dev/null || true
 }
 
 mod_gpu_nvidia() {
@@ -173,6 +177,20 @@ NVD_BACKEND=direct
 __GLX_VENDOR_LIBRARY_NAME=nvidia
 EOF
     fi
+
+    mkdir -p /etc/modprobe.d /etc/dracut.conf.d
+    cat << 'EOF' > /etc/modprobe.d/nvidia.conf
+# Enable DRM KMS modesetting for Wayland & Sway compatibility
+options nvidia-drm modeset=1
+EOF
+
+    cat << 'EOF' > /etc/dracut.conf.d/nvidia.conf
+# Include NVIDIA kernel modules in initramfs for early modesetting
+add_drivers+=" nvidia nvidia_modeset nvidia_uvm nvidia_drm "
+EOF
+
+    echo "Reconfiguring kernel initramfs for NVIDIA DRM modesetting..."
+    xbps-reconfigure -fa 2>/dev/null || true
 }
 
 
@@ -950,8 +968,9 @@ mod_flatpak_themes() {
         flatpak override --system --filesystem=xdg-config/gtk-4.0:ro 2>/dev/null || true
         flatpak override --system --filesystem=/usr/share/themes:ro 2>/dev/null || true
         flatpak override --system --filesystem=/usr/share/icons:ro 2>/dev/null || true
+        flatpak override --system --filesystem=/usr/share/fonts:ro 2>/dev/null || true
         flatpak override --system --env=GTK_THEME=Catppuccin-Mocha-Standard-Blue-Dark 2>/dev/null || true
-        echo "✓ Flatpak global theme overrides applied successfully."
+        echo "✓ Flatpak global theme & font overrides applied successfully."
     fi
 }
 
@@ -1043,10 +1062,13 @@ mod_vpm() {
 
 
 mod_services() {
-    echo "=== Configuring Runit System Daemons & Permissions via vpm ==="
+    echo "=== Configuring Runit System Daemons, Socklog Logging & Permissions ==="
     service_disable dhcpcd
 
-    for service in dbus elogind NetworkManager tailscaled bluetoothd cupsd avahi-daemon; do
+    echo "Installing socklog-void for system logging..."
+    pkg_install socklog-void
+
+    for service in dbus elogind NetworkManager tailscaled bluetoothd cupsd avahi-daemon socklog-unix nanoklogd; do
         if [ -d "/etc/sv/$service" ]; then
             service_enable "$service"
         fi
@@ -1056,7 +1078,8 @@ mod_services() {
     sv restart elogind || true
 
     if [ -n "$TARGET_USER" ] && id "$TARGET_USER" >/dev/null 2>&1; then
-        usermod -aG video,audio,storage,network,input,wheel,bluetooth,lpadmin "$TARGET_USER" || true
+        groupadd -r socklog 2>/dev/null || true
+        usermod -aG video,audio,storage,network,input,wheel,bluetooth,lpadmin,socklog "$TARGET_USER" || true
         su - "$TARGET_USER" -c "xdg-user-dirs-update" || true
     fi
 
