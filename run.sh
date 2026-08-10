@@ -488,6 +488,13 @@ purge_tailscale_packages() {
     pkg_remove tailscale
 }
 
+purge_void_tools() {
+    echo "Purging Void Linux community power-user tools..."
+    pkg_remove \
+        xtools vsv octoxbps font-awesome6 nerd-fonts-ttf \
+        btop fzf ripgrep fd bat eza duf tldr jq
+}
+
 purge_flatpaks() {
     if command -v flatpak >/dev/null 2>&1; then
         echo "Purging all installed Flatpak applications..."
@@ -512,9 +519,10 @@ mod_purge_to_barebones() {
     purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages
     purge_sway_packages; purge_enlightenment_packages
 
-    echo "[2/6] Purging applications & gaming stack..."
+    echo "[2/6] Purging applications, tools & gaming stack..."
     purge_app_packages
     purge_gaming_packages
+    purge_void_tools
     purge_flatpaks
 
     echo "[3/6] Purging audio, portals, GPU drivers & network daemons..."
@@ -658,6 +666,13 @@ mod_apps() {
         telegram-desktop gearlever pika-backup nheko protonplus retroarch \
         jellyfin-desktop filezilla PrismLauncher blender audacity wike \
         foliate nicotine+ vscode Signal-Desktop bleachbit obs
+}
+
+mod_void_tools() {
+    echo "=== Installing Void Linux Community Power-User Tools & Utilities ==="
+    pkg_install \
+        xtools vsv octoxbps font-awesome6 nerd-fonts-ttf \
+        btop fzf ripgrep fd bat eza duf tldr jq
 }
 
 mod_gaming() {
@@ -1139,6 +1154,7 @@ show_dialog_checklist() {
             "SWAP_SWAY"          "DE SWAP: Purge active DE & switch to Sway" OFF \
             "SWAP_ENLIGHTENMENT" "DE SWAP: Purge active DE & switch to Enlightenment" OFF \
             "PURGE_BAREBONES"    "FRESH START: Purge all packages & DEs down to base-barebones" OFF \
+            "VOID_TOOLS"         "Tools: Void Power-User Suite (xtools, vsv, octoxbps, btop, fzf, etc.)" ON \
             "APPS"               "Apps: Core Native Applications (VLC, OBS, VSCode, etc.)" ON \
             "GAMING"             "Gaming: Steam, Wine, GameMode & MangoHud" ON \
             "FLATPAKS"           "Apps: Flatpaks (Discord, Bitwarden, Obsidian, etc.)" ON \
@@ -1156,7 +1172,7 @@ show_dialog_checklist() {
         eval "SELECTED_TASKS=($CHOICES)"
     else
         echo "Defaulting to detected GPU tasks ($GPU_TYPE)..."
-        SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "FONTS" "SERVICES")
+        SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "FONTS" "SERVICES")
     fi
 }
 
@@ -1164,7 +1180,7 @@ show_dialog_checklist() {
 if [ "$#" -gt 0 ]; then
     for arg in "$@"; do
         case $arg in
-            --all)                   SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "FONTS" "SERVICES") ;;
+            --all)                   SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "FONTS" "SERVICES") ;;
             --kde)                   SELECTED_TASKS+=("KDE") ;;
             --gnome)                 SELECTED_TASKS+=("GNOME") ;;
             --xfce)                  SELECTED_TASKS+=("XFCE") ;;
@@ -1186,6 +1202,7 @@ if [ "$#" -gt 0 ]; then
             --swap-to-sway)          SELECTED_TASKS+=("SWAP_SWAY") ;;
             --swap-to-enlightenment) SELECTED_TASKS+=("SWAP_ENLIGHTENMENT") ;;
             --barebones|--fresh-start|--purge-to-barebones) SELECTED_TASKS+=("PURGE_BAREBONES") ;;
+            --void-tools|--community-tools) SELECTED_TASKS+=("VOID_TOOLS") ;;
             --gpu-amd)               SELECTED_TASKS+=("GPU_AMD") ;;
             --gpu-intel)             SELECTED_TASKS+=("GPU_INTEL") ;;
             --gpu-nvidia)            SELECTED_TASKS+=("GPU_NVIDIA") ;;
@@ -1246,6 +1263,7 @@ for task in "${SELECTED_TASKS[@]}"; do
         SWAP_SWAY)          mod_swap_to_sway ;;
         SWAP_ENLIGHTENMENT) mod_swap_to_enlightenment ;;
         PURGE_BAREBONES)    mod_purge_to_barebones ;;
+        VOID_TOOLS)         mod_void_tools ;;
         APPS)               mod_apps ;;
         GAMING)             mod_gaming ;;
         FLATPAKS)           mod_flatpaks ;;

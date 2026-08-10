@@ -96,6 +96,7 @@ sudo ./run.sh --fresh-start    # Purge all DEs, apps, flatpaks down to base-syst
 sudo ./run.sh --gpu-amd        # Install AMD drivers & Mesa VA-API
 sudo ./run.sh --gpu-intel      # Install Intel drivers & intel-ucode microcode
 sudo ./run.sh --gpu-nvidia     # Install NVIDIA drivers & DRM modesetting
+sudo ./run.sh --void-tools     # Install Void Community Power-User tools (xtools, vsv, octoxbps, btop, etc.)
 sudo ./run.sh --apps --gaming  # Install Core Desktop Apps & Gaming suite
 sudo ./run.sh --catppuccin     # Install Catppuccin Theme Suite
 sudo ./run.sh --maintenance    # One-touch system update, kernel purge (vkpurge), & orphan clean
@@ -114,6 +115,7 @@ sudo ./run.sh --maintenance    # One-touch system update, kernel purge (vkpurge)
 | `KDE`, `GNOME`, `XFCE`, `CINNAMON`, etc. | Complete Desktop Environment & Display Manager installation |
 | `SWAP_*` | Purge active DEs and switch to chosen Desktop Environment |
 | `PURGE_BAREBONES` | Fresh Start: Purge packages and DEs back to `base-system` |
+| `VOID_TOOLS` | Void Linux Power-User Suite (`xtools`, `vsv`, `octoxbps`, `btop`, `fzf`, `ripgrep`, `fd`, `bat`, `eza`, `duf`, `tldr`, `jq`) |
 | `APPS` | Core desktop applications (VLC, OBS, VSCode, LibreOffice, GIMP, Krita, etc.) |
 | `GAMING` | Steam, Wine, Lutris, GameMode, MangoHud, ProtonTricks |
 | `FLATPAKS` / `FLATPAK_THEMES` | Flatpak application suite and host theme/font synchronization |
