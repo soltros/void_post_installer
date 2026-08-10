@@ -420,6 +420,102 @@ run_orphan_clean() {
     fi
 }
 
+purge_app_packages() {
+    echo "Purging core desktop applications..."
+    pkg_remove \
+        PackageKit AppStream AppStream-qt p7zip unzip zip firefox fastfetch ffmpeg \
+        gst-plugins-good1 gst-plugins-bad1 gst-plugins-ugly1 gst-libav \
+        ntfs-3g exfatprogs dosfstools btrfs-progs cups xdg-user-dirs \
+        libreoffice thunderbird vlc gimp krita easyeffects inkscape \
+        telegram-desktop gearlever pika-backup nheko protonplus retroarch \
+        jellyfin-desktop filezilla PrismLauncher blender audacity wike \
+        foliate nicotine+ vscode Signal-Desktop bleachbit obs
+}
+
+purge_gaming_packages() {
+    echo "Purging gaming packages & performance tools..."
+    pkg_remove \
+        steam steam-udev-rules vulkan-loader-32bit mesa-dri-32bit \
+        gamemode libgamemode-32bit MangoHud MangoHud-32bit protontricks winetricks wine wine-32bit lutris
+}
+
+purge_gpu_packages() {
+    echo "Purging extra GPU drivers & acceleration libraries..."
+    pkg_remove \
+        xf86-video-amdgpu mesa-vulkan-radeon mesa-vulkan-radeon-32bit mesa-vaapi \
+        mesa-vulkan-intel mesa-vulkan-intel-32bit intel-video-accel intel-media-driver libva-intel-driver \
+        nvidia nvidia-libs-32bit nvidia-dkms nvidia-vaapi-driver libvdpau-va-gl libva-utils
+}
+
+purge_audio_packages() {
+    echo "Purging PipeWire audio suite..."
+    pkg_remove \
+        pipewire wireplumber wireplumber-elogind alsa-pipewire libspa-bluetooth pulseaudio-utils pavucontrol libjack-pipewire rtkit
+}
+
+purge_portal_packages() {
+    echo "Purging desktop portals & core daemons..."
+    pkg_remove \
+        xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-kde xdg-desktop-portal-gnome \
+        xdg-desktop-portal-lxqt xdg-desktop-portal-wlr bluez avahi NetworkManager
+}
+
+purge_font_packages() {
+    echo "Purging extra TrueType fonts..."
+    pkg_remove noto-fonts-ttf noto-fonts-cjk noto-fonts-emoji liberation-fonts-ttf
+}
+
+purge_tailscale_packages() {
+    echo "Purging Tailscale VPN..."
+    pkg_remove tailscale
+}
+
+purge_flatpaks() {
+    if command -v flatpak >/dev/null 2>&1; then
+        echo "Purging all installed Flatpak applications..."
+        flatpak uninstall --all -y 2>/dev/null || true
+        flatpak remote-delete flathub 2>/dev/null || true
+    fi
+}
+
+mod_purge_to_barebones() {
+    echo "========================================================"
+    echo " [FRESH START] Purging all packages & DEs down to base-barebones"
+    echo "========================================================"
+    stop_all_display_managers
+    service_disable bluetoothd
+    service_disable tailscaled
+    service_disable cupsd
+    service_disable avahi-daemon
+    service_disable rtkit
+
+    echo "[1/6] Purging all Desktop Environments..."
+    purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
+    purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages
+    purge_sway_packages; purge_enlightenment_packages
+
+    echo "[2/6] Purging applications & gaming stack..."
+    purge_app_packages
+    purge_gaming_packages
+    purge_flatpaks
+
+    echo "[3/6] Purging audio, portals, GPU drivers & network daemons..."
+    purge_audio_packages
+    purge_portal_packages
+    purge_gpu_packages
+    purge_font_packages
+    purge_tailscale_packages
+
+    echo "[4/6] Ensuring core base-system metapackage is intact..."
+    pkg_install base-system
+
+    echo "[5/6] Cleaning all orphaned dependencies via vpm clean..."
+    run_orphan_clean
+
+    echo "[6/6] System successfully purged down to clean base-barebones state!"
+    echo "Please reboot your system (sudo reboot)."
+}
+
 # --- Desktop Environment Swap Modules ---
 
 mod_swap_to_kde() {
@@ -1019,6 +1115,7 @@ show_dialog_checklist() {
             "SWAP_BUDGIE"        "DE SWAP: Purge active DE & switch to Budgie" OFF \
             "SWAP_SWAY"          "DE SWAP: Purge active DE & switch to Sway" OFF \
             "SWAP_ENLIGHTENMENT" "DE SWAP: Purge active DE & switch to Enlightenment" OFF \
+            "PURGE_BAREBONES"    "FRESH START: Purge all packages & DEs down to base-barebones" OFF \
             "APPS"               "Apps: Core Native Applications (VLC, OBS, VSCode, etc.)" ON \
             "GAMING"             "Gaming: Steam, Wine, GameMode & MangoHud" ON \
             "FLATPAKS"           "Apps: Flatpaks (Discord, Bitwarden, Obsidian, etc.)" ON \
@@ -1065,6 +1162,7 @@ if [ "$#" -gt 0 ]; then
             --swap-to-budgie)        SELECTED_TASKS+=("SWAP_BUDGIE") ;;
             --swap-to-sway)          SELECTED_TASKS+=("SWAP_SWAY") ;;
             --swap-to-enlightenment) SELECTED_TASKS+=("SWAP_ENLIGHTENMENT") ;;
+            --barebones|--fresh-start|--purge-to-barebones) SELECTED_TASKS+=("PURGE_BAREBONES") ;;
             --gpu-amd)               SELECTED_TASKS+=("GPU_AMD") ;;
             --gpu-intel)             SELECTED_TASKS+=("GPU_INTEL") ;;
             --gpu-nvidia)            SELECTED_TASKS+=("GPU_NVIDIA") ;;
@@ -1124,6 +1222,7 @@ for task in "${SELECTED_TASKS[@]}"; do
         SWAP_BUDGIE)        mod_swap_to_budgie ;;
         SWAP_SWAY)          mod_swap_to_sway ;;
         SWAP_ENLIGHTENMENT) mod_swap_to_enlightenment ;;
+        PURGE_BAREBONES)    mod_purge_to_barebones ;;
         APPS)               mod_apps ;;
         GAMING)             mod_gaming ;;
         FLATPAKS)           mod_flatpaks ;;
