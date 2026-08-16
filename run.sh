@@ -116,6 +116,7 @@ mod_gpu_amd() {
         vulkan-loader-32bit \
         libvdpau-va-gl \
         linux-firmware-amd \
+        amd-ucode \
         libva-utils
 
     if ! grep -q "LIBVA_DRIVER_NAME=radeonsi" /etc/environment 2>/dev/null; then
@@ -733,6 +734,85 @@ mod_tailscale() {
     pkg_install tailscale
 }
 
+mod_time_sync() {
+    echo "=== Configuring NTP Time Sync (openntpd) ==="
+    pkg_install openntpd
+
+    mkdir -p /etc/openntpd
+    if [ ! -f /etc/ntpd.conf ]; then
+        cat << 'EOF' > /etc/ntpd.conf
+# NTP servers for time synchronization
+servers pool.ntp.org
+EOF
+    fi
+
+    service_enable openntpd
+
+    # Sync clock immediately if daemon isn't already running
+    if ! pgrep -x openntpd >/dev/null 2>&1; then
+        ntpd -s 2>/dev/null || true
+    fi
+
+    echo "✓ NTP time sync configured and enabled."
+}
+
+mod_power() {
+    echo "=== Configuring Power Management ==="
+    pkg_install power-profiles-daemon
+    service_enable power-profiles-daemon
+    echo "✓ Power profiles daemon installed and enabled."
+}
+
+mod_trim() {
+    echo "=== Configuring Periodic SSD TRIM ==="
+    pkg_install util-linux
+
+    if [ ! -f /etc/cron.daily/fstrim ]; then
+        cat << 'EOF' > /etc/cron.daily/fstrim
+#!/bin/sh
+/usr/bin/fstrim --all --verbose 2>/dev/null || true
+EOF
+        chmod 755 /etc/cron.daily/fstrim
+    fi
+
+    echo "✓ Weekly SSD TRIM cron job installed."
+}
+
+mod_fwupd() {
+    echo "=== Installing Firmware Update Daemon (fwupd) ==="
+    pkg_install fwupd
+    service_enable fwupd
+    echo "✓ fwupd installed and enabled for LVFS firmware updates."
+}
+
+mod_locale() {
+    echo "=== Configuring System Locale ==="
+    if ! grep -q "^en_US.UTF-8 UTF-8" /etc/default/libc-locales 2>/dev/null; then
+        echo "en_US.UTF-8 UTF-8" >> /etc/default/libc-locales
+        xbps-reconfigure -fa 2>/dev/null || true
+    fi
+    echo "✓ Locale en_US.UTF-8 configured."
+}
+
+mod_zram() {
+    echo "=== Configuring ZRAM Compressed Swap ==="
+    pkg_install zramctl
+
+    mkdir -p /etc/sv/zram
+    cat << 'EOF' > /etc/sv/zram/run
+#!/bin/sh
+exec 2>&1
+[ -r conf ] && . ./conf
+exec zramctl -a zram0 -s 2G
+mkswap /dev/zram0
+swapon /dev/zram0
+EOF
+    chmod 755 /etc/sv/zram/run
+
+    service_enable zram
+    echo "✓ ZRAM 2G compressed swap enabled."
+}
+
 mod_fonts() {
     echo "=== Installing TrueType Fonts ==="
     pkg_install noto-fonts-ttf noto-fonts-cjk noto-fonts-emoji liberation-fonts-ttf
@@ -1196,6 +1276,12 @@ show_dialog_checklist() {
             "CATPPUCCIN"         "Theme: Catppuccin Universal Theme Suite & Wallpapers" ON \
             "VPM"                "System: Install voidPM (vpm) Binary directly to /usr/bin" ON \
             "TAILSCALE"          "Network: Tailscale Mesh VPN" ON \
+            "TIME_SYNC"          "System: NTP Time Sync (openntpd)" ON \
+            "POWER"              "System: Power Profiles Daemon" ON \
+            "TRIM"               "System: Periodic SSD TRIM" ON \
+            "FWUPD"              "System: Firmware Update Daemon (LVFS)" ON \
+            "LOCALE"             "System: Locale Generation (en_US.UTF-8)" ON \
+            "ZRAM"               "System: ZRAM Compressed Swap" OFF \
             "FONTS"              "System: TrueType Fonts (Noto & Liberation)" ON \
             "SESSION_CONFIG"     "System: Auto-Configure Default Session Presets" ON \
             "MAINTENANCE"        "System: One-Touch Maintenance (vpm update & clean)" OFF \
@@ -1205,7 +1291,7 @@ show_dialog_checklist() {
         eval "SELECTED_TASKS=($CHOICES)"
     else
         echo "Defaulting to detected GPU tasks ($GPU_TYPE)..."
-        SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "FONTS" "SERVICES")
+        SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "TIME_SYNC" "POWER" "TRIM" "FWUPD" "LOCALE" "FONTS" "SERVICES")
     fi
 }
 
@@ -1213,7 +1299,7 @@ show_dialog_checklist() {
 if [ "$#" -gt 0 ]; then
     for arg in "$@"; do
         case $arg in
-            --all)                   SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "FONTS" "SERVICES") ;;
+            --all)                   SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "TIME_SYNC" "POWER" "TRIM" "FWUPD" "LOCALE" "FONTS" "SERVICES") ;;
             --kde)                   SELECTED_TASKS+=("KDE") ;;
             --gnome)                 SELECTED_TASKS+=("GNOME") ;;
             --xfce)                  SELECTED_TASKS+=("XFCE") ;;
@@ -1245,7 +1331,13 @@ if [ "$#" -gt 0 ]; then
             --zsh)                   SELECTED_TASKS+=("ZSH") ;;
             --catppuccin)            SELECTED_TASKS+=("CATPPUCCIN") ;;
             --vpm)                   SELECTED_TASKS+=("VPM") ;;
-            --audio)                 SELECTED_TASKS+=("AUDIO") ;;
+            --time-sync)           SELECTED_TASKS+=("TIME_SYNC") ;;
+            --power)               SELECTED_TASKS+=("POWER") ;;
+            --trim)                SELECTED_TASKS+=("TRIM") ;;
+            --fwupd)               SELECTED_TASKS+=("FWUPD") ;;
+            --locale)              SELECTED_TASKS+=("LOCALE") ;;
+            --zram)                SELECTED_TASKS+=("ZRAM") ;;
+            --audio)               SELECTED_TASKS+=("AUDIO") ;;
             --realtime-audio)        SELECTED_TASKS+=("AUDIO_REALTIME") ;;
             --session-config)        SELECTED_TASKS+=("SESSION_CONFIG") ;;
             --maintenance)           SELECTED_TASKS+=("MAINTENANCE") ;;
@@ -1305,6 +1397,12 @@ for task in "${SELECTED_TASKS[@]}"; do
         CATPPUCCIN)         mod_catppuccin ;;
         VPM)                mod_vpm ;;
         TAILSCALE)          mod_tailscale ;;
+        TIME_SYNC)          mod_time_sync ;;
+        POWER)              mod_power ;;
+        TRIM)               mod_trim ;;
+        FWUPD)              mod_fwupd ;;
+        LOCALE)             mod_locale ;;
+        ZRAM)               mod_zram ;;
         FONTS)              mod_fonts ;;
         SESSION_CONFIG)     mod_session_config ;;
         MAINTENANCE)        mod_maintenance ;;
