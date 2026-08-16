@@ -39,6 +39,7 @@ Options:
   --budgie                  Install Budgie Desktop & LightDM
   --sway                    Install Sway Wayland & LightDM
   --enlightenment           Install Enlightenment (E25) & LightDM
+  --hyprland                Install Hyprland Wayland Compositor & LightDM
   --swap-to-kde             Purge active DE and switch to KDE Plasma 6
   --swap-to-gnome           Purge active DE and switch to GNOME
   --swap-to-xfce            Purge active DE and switch to XFCE 4
@@ -49,6 +50,7 @@ Options:
   --swap-to-budgie          Purge active DE and switch to Budgie
   --swap-to-sway            Purge active DE and switch to Sway
   --swap-to-enlightenment   Purge active DE and switch to Enlightenment
+  --swap-to-hyprland        Purge active DE and switch to Hyprland
   --barebones, --fresh-start, --purge-to-barebones
                             Purge all packages and DEs down to base-system
   --void-tools, --community-tools
@@ -67,6 +69,9 @@ Options:
   --fonts                   Install TrueType fonts (Noto & Liberation)
   --zsh                     Configure Zsh with Oh My Zsh, Starship prompt & aliases
   --catppuccin              Install Catppuccin universal theme suite system-wide
+  --hyprland-themes         Install popular Hyprland dotfile theme suite into user's ~/.config
+  --hyprland-theme=<theme>  Specify theme: catppuccin, tokyo-night, nord, gruvbox, cyberpunk, all
+  --user=<username>         Specify target non-root user homedir for configuration files
   --session-config          Auto-configure default session presets
   --maintenance             Run one-touch system maintenance (vpm update & clean)
   --services                Configure Runit system daemons, socklog logging & user groups
@@ -165,6 +170,9 @@ fi
 # Detect available repository versions
 KDE_VERSION="$(xbps-query -R plasma-desktop 2>/dev/null | awk -F'[-_]' '/^pkgver:/ {print $3}' || echo "6.x")"
 GNOME_VERSION="$(xbps-query -R gnome-shell 2>/dev/null | awk -F'[-_]' '/^pkgver:/ {print $3}' || echo "48.x")"
+
+# Selected Hyprland themes array
+SELECTED_HYPRLAND_THEMES=()
 
 # Module definitions
 mod_repos() {
@@ -337,6 +345,22 @@ greeter-session=lightdm-gtk-greeter
 EOF
 }
 
+setup_hyprland_repo() {
+    local arch
+    arch="$(uname -m)"
+    local libc="glibc"
+    if ldd --version 2>&1 | grep -q "musl"; then
+        libc="musl"
+    fi
+    local repo_url="https://raw.githubusercontent.com/Makrennel/hyprland-void/repository-${arch}-${libc}"
+    mkdir -p /etc/xbps.d
+    if [ ! -f /etc/xbps.d/hyprland-void.conf ] || ! grep -q "$repo_url" /etc/xbps.d/hyprland-void.conf 2>/dev/null; then
+        echo "repository=${repo_url}" > /etc/xbps.d/hyprland-void.conf
+        echo "Configured Makrennel hyprland repository (${arch}-${libc})."
+        pkg_update
+    fi
+}
+
 # --- Desktop Environment Installation Modules ---
 
 mod_kde() {
@@ -431,6 +455,46 @@ mod_enlightenment() {
         enlightenment terminology efl rage-player
 }
 
+mod_hyprland() {
+    echo "=== Installing Hyprland Dynamic Tiling Wayland Compositor & LightDM ==="
+    setup_hyprland_repo
+    setup_lightdm
+
+    pkg_install \
+        hyprland \
+        xdg-desktop-portal-hyprland \
+        hyprpaper \
+        hyprlock \
+        hypridle \
+        Waybar \
+        wofi \
+        kitty \
+        foot \
+        mako \
+        grim \
+        slurp \
+        wl-clipboard \
+        swaybg \
+        swaylock \
+        polkit-gnome \
+        brightnessctl \
+        playerctl \
+        pamixer \
+        wlogout \
+        font-awesome6 \
+        nerd-fonts-ttf
+
+    if [ -n "$TARGET_USER" ] && id "$TARGET_USER" >/dev/null 2>&1; then
+        for g in _seatd input video seat; do
+            getent group "$g" >/dev/null 2>&1 || groupadd -r "$g" 2>/dev/null || true
+            usermod -aG "$g" "$TARGET_USER" 2>/dev/null || true
+        done
+    fi
+
+    # Install Hyprland dotfiles/themes
+    install_hyprland_themes
+}
+
 # --- Desktop Environment Removal Helpers ---
 
 purge_kde_packages() {
@@ -506,6 +570,13 @@ purge_enlightenment_packages() {
         enlightenment terminology efl rage-player
 }
 
+purge_hyprland_packages() {
+    echo "Purging Hyprland packages..."
+    pkg_remove \
+        hyprland hyprpaper hyprlock hypridle xdg-desktop-portal-hyprland \
+        Waybar wofi foot kitty mako dunst grim slurp wl-clipboard swaybg swaylock polkit-gnome brightnessctl playerctl pamixer wlogout
+}
+
 run_orphan_clean() {
     if command -v vpm >/dev/null 2>&1; then
         echo "Cleaning orphaned packages via vpm clean..."
@@ -549,10 +620,10 @@ purge_audio_packages() {
 }
 
 purge_portal_packages() {
-    echo "Purging desktop portals & core daemons..."
+    echo "Purging desktop portals & extra communication daemons..."
     pkg_remove \
         xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-kde xdg-desktop-portal-gnome \
-        xdg-desktop-portal-lxqt xdg-desktop-portal-wlr bluez avahi NetworkManager
+        xdg-desktop-portal-lxqt xdg-desktop-portal-wlr xdg-desktop-portal-hyprland bluez avahi
 }
 
 purge_font_packages() {
@@ -605,7 +676,7 @@ mod_purge_to_barebones() {
     echo "[1/6] Purging all Desktop Environments..."
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
     purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages
-    purge_sway_packages; purge_enlightenment_packages
+    purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
 
     echo "[2/6] Purging applications, tools & gaming stack..."
     purge_app_packages
@@ -613,7 +684,7 @@ mod_purge_to_barebones() {
     purge_void_tools
     purge_flatpaks
 
-    echo "[3/6] Purging audio, portals, GPU drivers, system daemons & network daemons..."
+    echo "[3/6] Purging audio, portals, GPU drivers, and optional system daemons..."
     purge_audio_packages
     purge_portal_packages
     purge_gpu_packages
@@ -621,13 +692,16 @@ mod_purge_to_barebones() {
     purge_tailscale_packages
     purge_system_modules_packages
 
-    echo "[4/6] Ensuring core base-system metapackage is intact..."
-    pkg_install base-system
+    echo "[4/6] Ensuring core base-system, D-Bus, elogind & NetworkManager are intact and active..."
+    pkg_install base-system NetworkManager wpa_supplicant dbus elogind
+    service_enable dbus
+    service_enable elogind
+    service_enable NetworkManager
 
     echo "[5/6] Cleaning all orphaned dependencies via vpm clean..."
     run_orphan_clean
 
-    echo "[6/6] System successfully purged down to clean base-barebones state!"
+    echo "[6/6] System successfully reset to clean base-barebones state with active networking!"
     echo "Please reboot your system (sudo reboot)."
 }
 
@@ -637,7 +711,7 @@ mod_swap_to_kde() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to KDE Plasma ==="
     stop_all_display_managers
     purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages; purge_mate_packages
-    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages
+    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_kde
     service_enable sddm
@@ -648,7 +722,7 @@ mod_swap_to_gnome() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to GNOME ==="
     stop_all_display_managers
     purge_kde_packages; purge_xfce_packages; purge_cinnamon_packages; purge_mate_packages
-    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages
+    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_gnome
     service_enable gdm
@@ -659,7 +733,7 @@ mod_swap_to_xfce() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to XFCE ==="
     stop_all_display_managers
     purge_kde_packages; purge_gnome_packages; purge_cinnamon_packages; purge_mate_packages
-    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages
+    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_xfce
     service_enable lightdm
@@ -670,7 +744,7 @@ mod_swap_to_cinnamon() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to Cinnamon ==="
     stop_all_display_managers
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_mate_packages
-    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages
+    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_cinnamon
     service_enable lightdm
@@ -681,7 +755,7 @@ mod_swap_to_mate() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to MATE ==="
     stop_all_display_managers
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
-    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages
+    purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_mate
     service_enable lightdm
@@ -692,7 +766,7 @@ mod_swap_to_lxqt() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to LXQt ==="
     stop_all_display_managers
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
-    purge_mate_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages
+    purge_mate_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_lxqt
     service_enable sddm
@@ -703,7 +777,7 @@ mod_swap_to_lxde() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to LXDE ==="
     stop_all_display_managers
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
-    purge_mate_packages; purge_lxqt_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages
+    purge_mate_packages; purge_lxqt_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_lxde
     service_enable lightdm
@@ -714,7 +788,7 @@ mod_swap_to_budgie() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to Budgie ==="
     stop_all_display_managers
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
-    purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_sway_packages; purge_enlightenment_packages
+    purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_sway_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_budgie
     service_enable lightdm
@@ -725,7 +799,7 @@ mod_swap_to_sway() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to Sway ==="
     stop_all_display_managers
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
-    purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_enlightenment_packages
+    purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_enlightenment_packages; purge_hyprland_packages
     run_orphan_clean
     mod_sway
     service_enable lightdm
@@ -736,11 +810,22 @@ mod_swap_to_enlightenment() {
     echo "=== [Desktop Swap] Swapping Desktop Environment to Enlightenment ==="
     stop_all_display_managers
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
-    purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages
+    purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_hyprland_packages
     run_orphan_clean
     mod_enlightenment
     service_enable lightdm
     echo "Desktop environment swapped to Enlightenment! Please reboot."
+}
+
+mod_swap_to_hyprland() {
+    echo "=== [Desktop Swap] Swapping Desktop Environment to Hyprland ==="
+    stop_all_display_managers
+    purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
+    purge_mate_packages; purge_lxqt_packages; purge_lxde_packages; purge_budgie_packages; purge_sway_packages; purge_enlightenment_packages
+    run_orphan_clean
+    mod_hyprland
+    service_enable lightdm
+    echo "Desktop environment swapped to Hyprland! Please reboot."
 }
 
 # --- Core Apps & Gaming Modules ---
@@ -893,13 +978,11 @@ mod_locale() {
 
 mod_zram() {
     echo "=== Configuring ZRAM Compressed Swap ==="
-    # Clean up any legacy or broken custom zram runit service
     service_disable zram 2>/dev/null || true
     rm -rf /etc/sv/zram /var/service/zram 2>/dev/null || true
 
     pkg_install zramen
 
-    # Ensure zram kernel module is loaded
     modprobe zram 2>/dev/null || true
     if [ ! -f /etc/modules-load.d/zram.conf ]; then
         mkdir -p /etc/modules-load.d
@@ -913,6 +996,580 @@ mod_zram() {
 mod_fonts() {
     echo "=== Installing TrueType Fonts ==="
     pkg_install noto-fonts-ttf noto-fonts-cjk noto-fonts-emoji liberation-fonts-ttf
+}
+
+# --- Hyprland Theme Generator & Sub-dialog System ---
+
+generate_hyprland_theme() {
+    local theme="$1"
+    local u_home="$2"
+    local t_dir="$u_home/.config/hypr/themes/$theme"
+    mkdir -p "$t_dir/hypr" "$t_dir/waybar" "$t_dir/wofi" "$t_dir/mako" "$t_dir/kitty"
+
+    local active_border inactive_border bg_color accent_color accent_secondary text_color bar_bg module_bg err_color warn_color ok_color
+
+    case "$theme" in
+        catppuccin|mocha)
+            theme="catppuccin"
+            active_border="rgb(cba6f7) rgb(89b4fa) 45deg"
+            inactive_border="rgba(585b70aa)"
+            bg_color="#1e1e2e"
+            accent_color="#cba6f7"
+            accent_secondary="#89b4fa"
+            text_color="#cdd6f4"
+            bar_bg="#181825ee"
+            module_bg="#313244"
+            ok_color="#a6e3a1"
+            warn_color="#fab387"
+            err_color="#f38ba8"
+            ;;
+        tokyo-night|tokyonight)
+            theme="tokyo-night"
+            active_border="rgb(7aa2f7) rgb(bb9af7) 45deg"
+            inactive_border="rgba(414868aa)"
+            bg_color="#1a1b26"
+            accent_color="#7aa2f7"
+            accent_secondary="#bb9af7"
+            text_color="#a9b1d6"
+            bar_bg="#16161eee"
+            module_bg="#24283b"
+            ok_color="#9ece6a"
+            warn_color="#e0af68"
+            err_color="#f7768e"
+            ;;
+        nord)
+            theme="nord"
+            active_border="rgb(88c0d0) rgb(81a1c1) 45deg"
+            inactive_border="rgba(4c566aaa)"
+            bg_color="#2e3440"
+            accent_color="#88c0d0"
+            accent_secondary="#81a1c1"
+            text_color="#eceff4"
+            bar_bg="#242933ee"
+            module_bg="#3b4252"
+            ok_color="#a3be8c"
+            warn_color="#ebcb8b"
+            err_color="#bf616a"
+            ;;
+        gruvbox)
+            theme="gruvbox"
+            active_border="rgb(fabd2f) rgb(fe8019) 45deg"
+            inactive_border="rgba(504945aa)"
+            bg_color="#282828"
+            accent_color="#fabd2f"
+            accent_secondary="#fe8019"
+            text_color="#ebdbb2"
+            bar_bg="#1d2021ee"
+            module_bg="#3c3836"
+            ok_color="#b8bb26"
+            warn_color="#fabd2f"
+            err_color="#fb4934"
+            ;;
+        cyberpunk)
+            theme="cyberpunk"
+            active_border="rgb(00f0ff) rgb(ff007f) 45deg"
+            inactive_border="rgba(261447aa)"
+            bg_color="#0d0221"
+            accent_color="#00f0ff"
+            accent_secondary="#ff007f"
+            text_color="#fcee0a"
+            bar_bg="#0a0118ee"
+            module_bg="#261447"
+            ok_color="#05ffa1"
+            warn_color="#fcee0a"
+            err_color="#ff2a6d"
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+
+    # 1. hyprland.conf
+    cat << EOF > "$t_dir/hypr/hyprland.conf"
+# Hyprland Config - Theme: $theme
+
+monitor=,preferred,auto,1
+
+# Autostart
+exec-once = dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP
+exec-once = /usr/libexec/polkit-gnome-authentication-agent-1
+exec-once = waybar
+exec-once = mako
+exec-once = swaybg -c "$bg_color"
+
+input {
+    kb_layout = us
+    follow_mouse = 1
+    touchpad {
+        natural_scroll = true
+    }
+}
+
+general {
+    gaps_in = 5
+    gaps_out = 10
+    border_size = 2
+    col.active_border = $active_border
+    col.inactive_border = $inactive_border
+    layout = dwindle
+}
+
+decoration {
+    rounding = 10
+    blur {
+        enabled = true
+        size = 6
+        passes = 2
+        new_optimizations = true
+    }
+    shadow {
+        enabled = true
+        range = 15
+        render_power = 3
+        color = rgba(00000088)
+    }
+}
+
+animations {
+    enabled = true
+    bezier = overshot, 0.05, 0.9, 0.1, 1.05
+    bezier = smoothOut, 0.36, 0, 0.66, -0.56
+    bezier = smoothIn, 0.25, 1, 0.5, 1
+    animation = windows, 1, 4, overshot, slide
+    animation = windowsOut, 1, 4, smoothOut, slide
+    animation = border, 1, 10, default
+    animation = fade, 1, 4, smoothIn
+    animation = workspaces, 1, 5, default, slide
+}
+
+dwindle {
+    pseudotile = true
+    preserve_split = true
+}
+
+misc {
+    disable_hyprland_logo = true
+    disable_splash_rendering = true
+    mouse_move_enables_dpms = true
+    key_press_enables_dpms = true
+}
+
+windowrule = float, ^(pavucontrol)$
+windowrule = float, ^(nm-connection-editor)$
+windowrule = float, ^(wlogout)$
+
+\$mainMod = SUPER
+
+bind = \$mainMod, RETURN, exec, kitty
+bind = \$mainMod, T, exec, foot
+bind = \$mainMod, Q, killactive,
+bind = \$mainMod, SPACE, exec, wofi --show drun
+bind = \$mainMod, D, exec, wofi --show drun
+bind = \$mainMod, E, exec, thunar
+bind = \$mainMod, V, togglefloating,
+bind = \$mainMod, F, fullscreen, 0
+bind = \$mainMod, L, exec, hyprlock
+bind = \$mainMod, ESCAPE, exec, wlogout
+bind = \$mainMod SHIFT, T, exec, ~/.config/hypr/switch-theme.sh
+
+binde = , XF86AudioRaiseVolume, exec, pamixer -i 5
+binde = , XF86AudioLowerVolume, exec, pamixer -d 5
+bind = , XF86AudioMute, exec, pamixer -t
+bind = , XF86AudioPlay, exec, playerctl play-pause
+bind = , XF86AudioNext, exec, playerctl next
+bind = , XF86AudioPrev, exec, playerctl previous
+
+binde = , XF86MonBrightnessUp, exec, brightnessctl set 5%+
+binde = , XF86MonBrightnessDown, exec, brightnessctl set 5%-
+
+bind = \$mainMod, PRINT, exec, grim - | wl-copy
+bind = \$mainMod SHIFT, S, exec, grim -g "\$(slurp)" - | wl-copy
+
+bind = \$mainMod, left, movefocus, l
+bind = \$mainMod, right, movefocus, r
+bind = \$mainMod, up, movefocus, u
+bind = \$mainMod, down, movefocus, d
+bind = \$mainMod, H, movefocus, l
+bind = \$mainMod, L, movefocus, r
+bind = \$mainMod, K, movefocus, u
+bind = \$mainMod, J, movefocus, d
+
+bind = \$mainMod, 1, workspace, 1
+bind = \$mainMod, 2, workspace, 2
+bind = \$mainMod, 3, workspace, 3
+bind = \$mainMod, 4, workspace, 4
+bind = \$mainMod, 5, workspace, 5
+bind = \$mainMod, 6, workspace, 6
+bind = \$mainMod, 7, workspace, 7
+bind = \$mainMod, 8, workspace, 8
+bind = \$mainMod, 9, workspace, 9
+
+bind = \$mainMod SHIFT, 1, movetoworkspace, 1
+bind = \$mainMod SHIFT, 2, movetoworkspace, 2
+bind = \$mainMod SHIFT, 3, movetoworkspace, 3
+bind = \$mainMod SHIFT, 4, movetoworkspace, 4
+bind = \$mainMod SHIFT, 5, movetoworkspace, 5
+bind = \$mainMod SHIFT, 6, movetoworkspace, 6
+bind = \$mainMod SHIFT, 7, movetoworkspace, 7
+bind = \$mainMod SHIFT, 8, movetoworkspace, 8
+bind = \$mainMod SHIFT, 9, movetoworkspace, 9
+
+bindm = \$mainMod, mouse:272, movewindow
+bindm = \$mainMod, mouse:273, resizewindow
+EOF
+
+    # 2. waybar config & style.css
+    cat << EOF > "$t_dir/waybar/config"
+{
+    "layer": "top",
+    "position": "top",
+    "height": 36,
+    "spacing": 6,
+    "modules-left": ["hyprland/workspaces", "hyprland/window"],
+    "modules-center": ["clock"],
+    "modules-right": ["pulseaudio", "network", "cpu", "memory", "battery", "tray", "custom/power"],
+    "hyprland/workspaces": {
+        "format": "{id}",
+        "on-click": "activate",
+        "sort-by-number": true
+    },
+    "hyprland/window": {
+        "format": "{}",
+        "max-length": 35
+    },
+    "clock": {
+        "format": " {:%H:%M   %a %d %b}",
+        "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>"
+    },
+    "cpu": {
+        "format": " {usage}%",
+        "interval": 2
+    },
+    "memory": {
+        "format": " {}%",
+        "interval": 2
+    },
+    "battery": {
+        "states": {
+            "good": 95,
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{icon} {capacity}%",
+        "format-charging": " {capacity}%",
+        "format-plugged": " {capacity}%",
+        "format-icons": ["", "", "", "", ""]
+    },
+    "network": {
+        "format-wifi": " {signalStrength}%",
+        "format-ethernet": "󰈀 Wired",
+        "format-disconnected": "⚠ Offline"
+    },
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-muted": " Muted",
+        "format-icons": {
+            "default": ["", "", ""]
+        },
+        "on-click": "pavucontrol"
+    },
+    "tray": {
+        "spacing": 8
+    },
+    "custom/power": {
+        "format": "",
+        "on-click": "wlogout",
+        "tooltip": false
+    }
+}
+EOF
+
+    cat << EOF > "$t_dir/waybar/style.css"
+* {
+    border: none;
+    border-radius: 0;
+    font-family: "JetBrainsMono Nerd Font", "Noto Sans", sans-serif;
+    font-size: 13px;
+    min-height: 0;
+}
+
+window#waybar {
+    background-color: $bar_bg;
+    color: $text_color;
+    border-bottom: 2px solid $accent_color;
+}
+
+#workspaces button {
+    padding: 0 8px;
+    background-color: transparent;
+    color: $text_color;
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+#workspaces button.active {
+    background-color: $module_bg;
+    color: $accent_color;
+    border-bottom: 2px solid $accent_color;
+    border-radius: 6px;
+}
+
+#workspaces button:hover {
+    background: $module_bg;
+    color: $accent_secondary;
+    border-radius: 6px;
+}
+
+#window,
+#clock,
+#battery,
+#cpu,
+#memory,
+#network,
+#pulseaudio,
+#tray,
+#custom-power {
+    padding: 2px 10px;
+    margin: 4px 2px;
+    background-color: $module_bg;
+    color: $text_color;
+    border-radius: 8px;
+}
+
+#clock {
+    color: $accent_color;
+    font-weight: bold;
+}
+
+#battery.warning {
+    color: $warn_color;
+}
+
+#battery.critical {
+    color: $err_color;
+}
+
+#pulseaudio.muted {
+    color: $err_color;
+}
+
+#custom-power {
+    color: $err_color;
+    font-weight: bold;
+    padding-right: 12px;
+}
+EOF
+
+    # 3. wofi config & style.css
+    cat << EOF > "$t_dir/wofi/config"
+width=460
+height=380
+location=center
+show=drun
+prompt=Search...
+filter_rate=100
+allow_markup=true
+no_actions=true
+halign=fill
+orientation=vertical
+content_halign=fill
+insensitive=true
+allow_images=true
+image_size=28
+EOF
+
+    cat << EOF > "$t_dir/wofi/style.css"
+window {
+    margin: 0px;
+    background-color: $bg_color;
+    border: 2px solid $accent_color;
+    border-radius: 12px;
+    font-family: "JetBrainsMono Nerd Font", "Noto Sans", sans-serif;
+    font-size: 14px;
+}
+
+#input {
+    margin: 10px;
+    padding: 8px 12px;
+    border: 1px solid $accent_secondary;
+    border-radius: 8px;
+    background-color: $module_bg;
+    color: $text_color;
+}
+
+#inner-box {
+    margin: 5px;
+    border: none;
+    background-color: transparent;
+}
+
+#outer-box {
+    margin: 5px;
+    border: none;
+    background-color: transparent;
+}
+
+#entry {
+    margin: 3px 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    color: $text_color;
+}
+
+#entry:selected {
+    background-color: $accent_color;
+    color: $bg_color;
+    font-weight: bold;
+}
+EOF
+
+    # 4. mako config
+    cat << EOF > "$t_dir/mako/config"
+font=Noto Sans 11
+background-color=${bg_color}ee
+text-color=$text_color
+border-color=$accent_color
+border-size=2
+border-radius=8
+icons=1
+max-icon-size=48
+default-timeout=5000
+margin=12
+padding=10
+EOF
+
+    # 5. kitty config
+    cat << EOF > "$t_dir/kitty/kitty.conf"
+font_family      JetBrainsMono Nerd Font
+font_size        12.0
+background_opacity 0.92
+window_padding_width 10
+confirm_os_window_close 0
+
+# Colors for theme: $theme
+background $bg_color
+foreground $text_color
+selection_background $accent_color
+selection_foreground $bg_color
+cursor $accent_color
+
+active_border_color $accent_color
+inactive_border_color $module_bg
+EOF
+}
+
+prompt_target_user_dialog() {
+    if command -v dialog >/dev/null 2>&1; then
+        local entered_user
+        entered_user=$(dialog --clear --stdout --backtitle "Target User Configuration" \
+            --inputbox "Confirm or enter the non-root username whose home directory (~/.config) will receive configurations, Hyprland dotfiles, and user permissions:" 10 76 "$TARGET_USER" 2>&1) || true
+        if [ -n "$entered_user" ]; then
+            TARGET_USER="$entered_user"
+        fi
+    fi
+}
+
+show_hyprland_theme_dialog() {
+    if command -v dialog >/dev/null 2>&1; then
+        local theme_choices
+        theme_choices=$(dialog --clear --stdout --backtitle "Void Linux Hyprland Theming Suite" \
+            --checklist "Select Hyprland themes to install into /home/$TARGET_USER/.config/ (SPACE to toggle):" 18 80 5 \
+            "catppuccin"  "Catppuccin Mocha (Modern pastel violet & sapphire dark)" ON \
+            "tokyo-night" "Tokyo Night (Vibrant deep blue & neon purple aesthetic)" ON \
+            "nord"        "Nord Frost (Clean minimalist arctic slate & ice blue)" OFF \
+            "gruvbox"     "Gruvbox Retro (Warm earthy gold, amber & forest green)" OFF \
+            "cyberpunk"   "Cyberpunk Synthwave (High-contrast neon cyan & magenta)" OFF 2>&1) || true
+        if [ -n "$theme_choices" ]; then
+            eval "SELECTED_HYPRLAND_THEMES=($theme_choices)"
+        fi
+    fi
+}
+
+install_hyprland_themes() {
+    local u_home
+    u_home=$(getent passwd "$TARGET_USER" | cut -d: -f6 || echo "/home/$TARGET_USER")
+    [ -z "$u_home" ] && u_home="/home/$TARGET_USER"
+
+    echo "=== Installing Hyprland Theme Suite into $u_home/.config ==="
+
+    if [ "${#SELECTED_HYPRLAND_THEMES[@]}" -eq 0 ]; then
+        SELECTED_HYPRLAND_THEMES=("catppuccin" "tokyo-night" "nord" "gruvbox" "cyberpunk")
+    fi
+
+    # Backup existing hypr config if present and not created by this script
+    if [ -d "$u_home/.config/hypr" ] && [ ! -d "$u_home/.config/hypr/themes" ]; then
+        local bak_dir="$u_home/.config/hypr.bak.$(date +%Y%m%d%H%M%S)"
+        echo "[i] Backing up existing Hyprland configuration to $bak_dir..."
+        cp -r "$u_home/.config/hypr" "$bak_dir" 2>/dev/null || true
+    fi
+
+    mkdir -p "$u_home/.config/hypr/themes" \
+             "$u_home/.config/waybar" \
+             "$u_home/.config/wofi" \
+             "$u_home/.config/mako" \
+             "$u_home/.config/kitty"
+
+    for theme in "${SELECTED_HYPRLAND_THEMES[@]}"; do
+        generate_hyprland_theme "$theme" "$u_home"
+    done
+
+    # Switch theme script
+    cat << 'SWITCHEOC' > "$u_home/.config/hypr/switch-theme.sh"
+#!/bin/sh
+THEME="$1"
+THEMES_DIR="$HOME/.config/hypr/themes"
+
+if [ -z "$THEME" ]; then
+    if command -v wofi >/dev/null 2>&1; then
+        THEME=$(ls "$THEMES_DIR" 2>/dev/null | wofi --dmenu --prompt "Select Hyprland Theme:")
+    else
+        echo "Usage: $0 <theme-name>"
+        echo "Available themes: $(ls "$THEMES_DIR" 2>/dev/null | tr '\n' ' ')"
+        exit 1
+    fi
+fi
+
+[ -z "$THEME" ] && exit 0
+
+if [ -d "$THEMES_DIR/$THEME" ]; then
+    echo "Applying Hyprland theme: $THEME"
+    [ -d "$THEMES_DIR/$THEME/hypr" ] && cp -rf "$THEMES_DIR/$THEME/hypr/"* "$HOME/.config/hypr/" 2>/dev/null || true
+    [ -d "$THEMES_DIR/$THEME/waybar" ] && cp -rf "$THEMES_DIR/$THEME/waybar/"* "$HOME/.config/waybar/" 2>/dev/null || true
+    [ -d "$THEMES_DIR/$THEME/wofi" ] && cp -rf "$THEMES_DIR/$THEME/wofi/"* "$HOME/.config/wofi/" 2>/dev/null || true
+    [ -d "$THEMES_DIR/$THEME/mako" ] && cp -rf "$THEMES_DIR/$THEME/mako/"* "$HOME/.config/mako/" 2>/dev/null || true
+    [ -d "$THEMES_DIR/$THEME/kitty" ] && cp -rf "$THEMES_DIR/$THEME/kitty/"* "$HOME/.config/kitty/" 2>/dev/null || true
+
+    hyprctl reload >/dev/null 2>&1 || true
+    pkill -f waybar 2>/dev/null || true
+    waybar >/dev/null 2>&1 &
+    makoctl reload >/dev/null 2>&1 || true
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send -a "Hyprland" "Theme Switched" "Active theme: $THEME" 2>/dev/null || true
+    fi
+else
+    echo "Theme '$THEME' not found in $THEMES_DIR" >&2
+    exit 1
+fi
+SWITCHEOC
+    chmod 755 "$u_home/.config/hypr/switch-theme.sh"
+
+    # Set primary active theme
+    local primary_theme="${SELECTED_HYPRLAND_THEMES[0]}"
+    if [ -d "$u_home/.config/hypr/themes/$primary_theme" ]; then
+        echo "Setting initial active Hyprland theme to '$primary_theme'..."
+        cp -rf "$u_home/.config/hypr/themes/$primary_theme/hypr/"* "$u_home/.config/hypr/" 2>/dev/null || true
+        cp -rf "$u_home/.config/hypr/themes/$primary_theme/waybar/"* "$u_home/.config/waybar/" 2>/dev/null || true
+        cp -rf "$u_home/.config/hypr/themes/$primary_theme/wofi/"* "$u_home/.config/wofi/" 2>/dev/null || true
+        cp -rf "$u_home/.config/hypr/themes/$primary_theme/mako/"* "$u_home/.config/mako/" 2>/dev/null || true
+        cp -rf "$u_home/.config/hypr/themes/$primary_theme/kitty/"* "$u_home/.config/kitty/" 2>/dev/null || true
+    fi
+
+    if [ -n "$TARGET_USER" ]; then
+        chown -R "$TARGET_USER:$TARGET_USER" "$u_home/.config" 2>/dev/null || true
+    fi
+
+    echo "✓ Hyprland theme suite installed in $u_home/.config/ (Active: $primary_theme)"
+    echo "  Switch themes anytime via SUPER+SHIFT+T or ~/.config/hypr/switch-theme.sh"
 }
 
 mod_zsh() {
@@ -1339,72 +1996,6 @@ mod_services() {
     fi
 }
 
-print_usage() {
-    cat << 'EOF'
-Modular Void Linux Desktop & Gaming Installer (dialog & CLI)
-Integrated with voidPM (vpm) - Multi-DE Support
-
-Usage: run.sh [OPTIONS]
-
-Options:
-  --all                     Install recommended suite (repos, vpm, portals, audio, GNOME, void-tools,
-                            apps, gaming, flatpaks, tailscale, time-sync, power, trim, fwupd, locale,
-                            fonts, services)
-  --gui, --dialog           Launch interactive dialog checklist menu (default when run without flags)
-  --repos                   Enable Multilib & Non-Free repositories
-  --vpm                     Download & install/update voidPM (vpm) binary to /usr/bin/vpm
-  --gpu-amd                 Install AMD GPU drivers, Mesa VA-API, and firmware
-  --gpu-intel               Install Intel GPU drivers, iHD VA-API, and microcode
-  --gpu-nvidia              Install NVIDIA GPU proprietary drivers, DKMS, and DRM modesetting
-  --portals                 Install XDG Desktop Portals & core daemons (D-Bus, elogind, NetworkManager)
-  --audio                   Configure PipeWire audio suite & WirePlumber
-  --realtime-audio          Configure PipeWire low-latency & rtkit realtime permissions
-  --kde                     Install KDE Plasma 6 & SDDM
-  --kde-tools               Install KDE CLI tools & XDG handlers
-  --gnome                   Install GNOME Shell & GDM
-  --xfce                    Install XFCE 4 & LightDM
-  --cinnamon                Install Cinnamon Desktop & LightDM
-  --mate                    Install MATE Desktop & LightDM
-  --lxqt                    Install LXQt Desktop & SDDM
-  --lxde                    Install LXDE Desktop & LightDM
-  --budgie                  Install Budgie Desktop & LightDM
-  --sway                    Install Sway Wayland & LightDM
-  --enlightenment           Install Enlightenment (E25) & LightDM
-  --swap-to-kde             Purge active DE and switch to KDE Plasma 6
-  --swap-to-gnome           Purge active DE and switch to GNOME
-  --swap-to-xfce            Purge active DE and switch to XFCE 4
-  --swap-to-cinnamon        Purge active DE and switch to Cinnamon
-  --swap-to-mate            Purge active DE and switch to MATE
-  --swap-to-lxqt            Purge active DE and switch to LXQt
-  --swap-to-lxde            Purge active DE and switch to LXDE
-  --swap-to-budgie          Purge active DE and switch to Budgie
-  --swap-to-sway            Purge active DE and switch to Sway
-  --swap-to-enlightenment   Purge active DE and switch to Enlightenment
-  --barebones, --fresh-start, --purge-to-barebones
-                            Purge all packages and DEs down to base-system
-  --void-tools, --community-tools
-                            Install Void Linux community power-user suite (xtools, vsv, btop, fzf, etc.)
-  --apps                    Install core desktop applications (VLC, OBS, VSCode, LibreOffice, GIMP, etc.)
-  --gaming                  Install Steam, Wine, Lutris, GameMode, MangoHud & gaming sysctl tweaks
-  --flatpaks                Install curated Flatpak application suite
-  --flatpak-themes          Synchronize host GTK/Qt themes to Flatpaks
-  --tailscale               Install Tailscale VPN
-  --time-sync               Configure openntpd NTP time synchronization
-  --power                   Configure power-profiles-daemon
-  --trim                    Configure weekly periodic SSD TRIM cron job
-  --fwupd                   Install fwupd firmware update daemon (LVFS)
-  --locale                  Configure system locale (en_US.UTF-8)
-  --zram                    Configure ZRAM compressed swap (zramen)
-  --fonts                   Install TrueType fonts (Noto & Liberation)
-  --zsh                     Configure Zsh with Oh My Zsh, Starship prompt & aliases
-  --catppuccin              Install Catppuccin universal theme suite system-wide
-  --session-config          Auto-configure default session presets
-  --maintenance             Run one-touch system maintenance (vpm update & clean)
-  --services                Configure Runit system daemons, socklog logging & user groups
-  -h, --help                Show this help message and exit
-EOF
-}
-
 # --- Selection Dialog Logic ---
 show_dialog_checklist() {
     AMD_STATE="OFF"
@@ -1422,7 +2013,7 @@ show_dialog_checklist() {
 
     if command -v dialog >/dev/null 2>&1; then
         CHOICES=$(dialog --clear --stdout --backtitle "Void Linux Installer & Desktop Swapper (GPU: $GPU_TYPE | vpm: active)" \
-            --checklist "Select tasks to run (UP/DOWN to scroll, SPACE to check/uncheck, ENTER to confirm):" 28 92 19 \
+            --checklist "Select tasks to run (UP/DOWN to scroll, SPACE to check/uncheck, ENTER to confirm):" 28 92 20 \
             "REPOS"              "System: Enable Multilib & Non-Free Repositories" ON \
             "VPM"                "System: Install/Update voidPM (vpm) Binary directly to /usr/bin" ON \
             "GPU_AMD"            "Hardware: AMD GPU Drivers & Mesa VA-API" "$AMD_STATE" \
@@ -1441,6 +2032,7 @@ show_dialog_checklist() {
             "BUDGIE"             "Install DE: Budgie & LightDM" OFF \
             "SWAY"               "Install DE: Sway Wayland & LightDM" OFF \
             "ENLIGHTENMENT"      "Install DE: Enlightenment (E25) & LightDM" OFF \
+            "HYPRLAND"           "Install DE: Hyprland Dynamic Tiling Wayland & LightDM" OFF \
             "SWAP_KDE"           "DE SWAP: Purge active DE & switch to KDE Plasma 6" OFF \
             "SWAP_GNOME"         "DE SWAP: Purge active DE & switch to GNOME 48" OFF \
             "SWAP_XFCE"          "DE SWAP: Purge active DE & switch to XFCE 4" OFF \
@@ -1451,6 +2043,7 @@ show_dialog_checklist() {
             "SWAP_BUDGIE"        "DE SWAP: Purge active DE & switch to Budgie" OFF \
             "SWAP_SWAY"          "DE SWAP: Purge active DE & switch to Sway" OFF \
             "SWAP_ENLIGHTENMENT" "DE SWAP: Purge active DE & switch to Enlightenment" OFF \
+            "SWAP_HYPRLAND"      "DE SWAP: Purge active DE & switch to Hyprland" OFF \
             "PURGE_BAREBONES"    "FRESH START: Purge all packages & DEs down to base-barebones" OFF \
             "VOID_TOOLS"         "Tools: Void Power-User Suite (xtools, vsv, octoxbps, btop, fzf, etc.)" ON \
             "APPS"               "Apps: Core Native Applications (VLC, OBS, VSCode, etc.)" ON \
@@ -1459,6 +2052,7 @@ show_dialog_checklist() {
             "FLATPAK_THEMES"     "Theme: Sync Host GTK/Qt & Catppuccin to Flatpaks" ON \
             "ZSH"                "Shell: Zsh + Oh My Zsh + Starship & vpm Aliases" ON \
             "CATPPUCCIN"         "Theme: Catppuccin Universal Theme Suite & Wallpapers" ON \
+            "HYPRLAND_THEMES"    "Theme: Hyprland Dotfiles & Theme Suite (Mocha, Tokyo, Nord, etc.)" OFF \
             "TAILSCALE"          "Network: Tailscale Mesh VPN" ON \
             "TIME_SYNC"          "System: NTP Time Sync (openntpd)" ON \
             "POWER"              "System: Power Profiles Daemon" ON \
@@ -1472,6 +2066,17 @@ show_dialog_checklist() {
             "SERVICES"           "System: Configure Runit Services & Permissions" ON 2>&1) || exit 0
 
         eval "SELECTED_TASKS=($CHOICES)"
+
+        # Confirm or specify target user in interactive dialog
+        prompt_target_user_dialog
+
+        # Check if Hyprland was selected to launch the theme sub-checkbox dialog
+        for t in "${SELECTED_TASKS[@]}"; do
+            if [ "$t" = "HYPRLAND" ] || [ "$t" = "SWAP_HYPRLAND" ] || [ "$t" = "HYPRLAND_THEMES" ]; then
+                show_hyprland_theme_dialog
+                break
+            fi
+        done
     else
         echo "Defaulting to detected GPU tasks ($GPU_TYPE)..."
         SELECTED_TASKS=("REPOS" "VPM" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "TIME_SYNC" "POWER" "TRIM" "FWUPD" "LOCALE" "FONTS" "SERVICES")
@@ -1503,6 +2108,7 @@ if [ "$#" -gt 0 ]; then
             --budgie)                SELECTED_TASKS+=("BUDGIE") ;;
             --sway)                  SELECTED_TASKS+=("SWAY") ;;
             --enlightenment)         SELECTED_TASKS+=("ENLIGHTENMENT") ;;
+            --hyprland)              SELECTED_TASKS+=("HYPRLAND") ;;
             --swap-to-kde)           SELECTED_TASKS+=("SWAP_KDE") ;;
             --swap-to-gnome)         SELECTED_TASKS+=("SWAP_GNOME") ;;
             --swap-to-xfce)          SELECTED_TASKS+=("SWAP_XFCE") ;;
@@ -1513,6 +2119,7 @@ if [ "$#" -gt 0 ]; then
             --swap-to-budgie)        SELECTED_TASKS+=("SWAP_BUDGIE") ;;
             --swap-to-sway)          SELECTED_TASKS+=("SWAP_SWAY") ;;
             --swap-to-enlightenment) SELECTED_TASKS+=("SWAP_ENLIGHTENMENT") ;;
+            --swap-to-hyprland)      SELECTED_TASKS+=("SWAP_HYPRLAND") ;;
             --barebones|--fresh-start|--purge-to-barebones) SELECTED_TASKS+=("PURGE_BAREBONES") ;;
             --void-tools|--community-tools) SELECTED_TASKS+=("VOID_TOOLS") ;;
             --apps)                  SELECTED_TASKS+=("APPS") ;;
@@ -1521,6 +2128,19 @@ if [ "$#" -gt 0 ]; then
             --flatpak-themes)        SELECTED_TASKS+=("FLATPAK_THEMES") ;;
             --zsh)                   SELECTED_TASKS+=("ZSH") ;;
             --catppuccin)            SELECTED_TASKS+=("CATPPUCCIN") ;;
+            --hyprland-themes)       SELECTED_TASKS+=("HYPRLAND_THEMES") ;;
+            --hyprland-theme=*)
+                tval="${arg#*=}"
+                if [ "$tval" = "all" ]; then
+                    SELECTED_HYPRLAND_THEMES=("catppuccin" "tokyo-night" "nord" "gruvbox" "cyberpunk")
+                else
+                    SELECTED_HYPRLAND_THEMES=("$tval")
+                fi
+                SELECTED_TASKS+=("HYPRLAND_THEMES")
+                ;;
+            --user=*|--target-user=*)
+                TARGET_USER="${arg#*=}"
+                ;;
             --tailscale)             SELECTED_TASKS+=("TAILSCALE") ;;
             --time-sync)             SELECTED_TASKS+=("TIME_SYNC") ;;
             --power)                 SELECTED_TASKS+=("POWER") ;;
@@ -1574,6 +2194,7 @@ CANONICAL_TASKS=(
     "SWAP_BUDGIE"
     "SWAP_SWAY"
     "SWAP_ENLIGHTENMENT"
+    "SWAP_HYPRLAND"
     "KDE"
     "KDE_TOOLS"
     "GNOME"
@@ -1585,6 +2206,8 @@ CANONICAL_TASKS=(
     "BUDGIE"
     "SWAY"
     "ENLIGHTENMENT"
+    "HYPRLAND"
+    "HYPRLAND_THEMES"
     "FONTS"
     "VOID_TOOLS"
     "APPS"
@@ -1612,6 +2235,7 @@ done
 clear 2>/dev/null || true
 echo ""
 echo "Detected Hardware GPU: $GPU_TYPE"
+echo "Target Configuration User: $TARGET_USER"
 echo "Executing selected installation modules: ${EXECUTION_PLAN[*]}"
 echo ""
 
@@ -1642,6 +2266,7 @@ for task in "${EXECUTION_PLAN[@]}"; do
         SWAP_BUDGIE)        mod_swap_to_budgie ;;
         SWAP_SWAY)          mod_swap_to_sway ;;
         SWAP_ENLIGHTENMENT) mod_swap_to_enlightenment ;;
+        SWAP_HYPRLAND)      mod_swap_to_hyprland ;;
         KDE)                mod_kde ;;
         KDE_TOOLS)          mod_kde_tools ;;
         GNOME)              mod_gnome ;;
@@ -1653,6 +2278,8 @@ for task in "${EXECUTION_PLAN[@]}"; do
         BUDGIE)             mod_budgie ;;
         SWAY)               mod_sway ;;
         ENLIGHTENMENT)      mod_enlightenment ;;
+        HYPRLAND)           mod_hyprland ;;
+        HYPRLAND_THEMES)    install_hyprland_themes ;;
         FONTS)              mod_fonts ;;
         VOID_TOOLS)         mod_void_tools ;;
         APPS)               mod_apps ;;

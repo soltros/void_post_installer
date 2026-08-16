@@ -4,8 +4,28 @@ A modular post-installation and desktop management suite for Void Linux, featuri
 
 ## Features
 
-- **Desktop Environments**: Install or swap between 10 DEs (KDE Plasma 6, GNOME, XFCE 4, Cinnamon, MATE, LXQt, LXDE, Budgie, Sway, Enlightenment).
-- **Desktop Swapping**: Automatically purges current DE packages and unneeded dependencies before installing the new environment.
+- **Desktop Environments & Compositors**: Install or swap between 11 desktop environments and tiling window managers:
+  - **Hyprland** (Dynamic Tiling Wayland Compositor)
+  - **KDE Plasma 6**
+  - **GNOME**
+  - **XFCE 4**
+  - **Cinnamon**
+  - **MATE**
+  - **LXQt**
+  - **LXDE**
+  - **Budgie**
+  - **Sway** (i3-compatible Wayland)
+  - **Enlightenment (E25)**
+- **Desktop Swapping**: Automatically purges current DE/WM packages and unneeded dependencies before installing the new environment.
+- **Hyprland Theme Suite & Sub-Dialog**:
+  - Interactive sub-checkbox checklist for selecting from 5 popular community dotfile themes:
+    - **Catppuccin Mocha** (Modern pastel mauve & sapphire dark aesthetic)
+    - **Tokyo Night** (Vibrant deep blue, cyan & neon purple)
+    - **Nord Frost** (Clean minimalist arctic slate & ice blue)
+    - **Gruvbox Retro** (Warm earthy gold, amber & forest green)
+    - **Cyberpunk Synthwave** (High-contrast neon cyan & hot magenta)
+  - Installs full configurations for `Hyprland`, `Waybar`, `Wofi`, `Mako`, and `Kitty` directly into the specified user's `~/.config/`.
+  - Includes an interactive theme switcher script (`~/.config/hypr/switch-theme.sh`, bound to `SUPER + SHIFT + T`) for switching themes on the fly.
 - **Barebones Reset**: Purge installed DEs, desktop applications, Flatpaks, extra daemons, and orphaned dependencies back to a minimal Void `base-system`.
 - **GPU Drivers & Acceleration**: Auto-detects hardware and installs drivers for AMD, Intel (with `intel-ucode` microcode), and NVIDIA (with DRM modesetting and dracut hooks).
 - **Audio Setup**: PipeWire and WirePlumber with PulseAudio, ALSA, and JACK compatibility plus realtime audio privileges (`rtkit`).
@@ -49,8 +69,9 @@ Running `./run.sh` without flags launches the interactive `dialog` checklist men
 ./run.sh --help
 ```
 
-### Install a Desktop Environment
+### Install a Desktop Environment or Window Manager
 ```bash
+sudo ./run.sh --hyprland
 sudo ./run.sh --kde
 sudo ./run.sh --gnome
 sudo ./run.sh --xfce
@@ -60,8 +81,17 @@ sudo ./run.sh --lxqt
 sudo ./run.sh --sway
 ```
 
+### Install Hyprland with Specific Themes into a User's Homedir
+```bash
+sudo ./run.sh --hyprland --hyprland-theme=catppuccin --user=derrik
+sudo ./run.sh --hyprland --hyprland-theme=tokyo-night
+sudo ./run.sh --hyprland --hyprland-theme=all
+sudo ./run.sh --hyprland-themes
+```
+
 ### Swap Desktop Environments
 ```bash
+sudo ./run.sh --swap-to-hyprland
 sudo ./run.sh --swap-to-kde
 sudo ./run.sh --swap-to-gnome
 sudo ./run.sh --swap-to-xfce
@@ -103,8 +133,10 @@ sudo ./run.sh --maintenance
 | `PORTALS` | `--portals` | XDG Desktop Portals, D-Bus, elogind, NetworkManager, BlueZ, Avahi |
 | `AUDIO` | `--audio` | PipeWire audio suite, WirePlumber, ALSA, PulseAudio & JACK wrappers |
 | `AUDIO_REALTIME`| `--realtime-audio` | Realtime audio priority (`rtkit`) and low-latency audio group permissions |
+| `HYPRLAND` | `--hyprland` | Hyprland dynamic tiling Wayland compositor, portals & LightDM |
+| `HYPRLAND_THEMES` | `--hyprland-themes`, `--hyprland-theme=<name>` | Install theme suite (Catppuccin, Tokyo Night, Nord, Gruvbox, Cyberpunk) into `~/.config/` |
 | `KDE` / `GNOME` / `XFCE` etc. | `--kde`, `--gnome`, etc. | Complete Desktop Environment & Display Manager installation |
-| `SWAP_*` | `--swap-to-<de>` | Purge active DEs and switch to chosen Desktop Environment |
+| `SWAP_*` | `--swap-to-<de>` | Purge active DEs and switch to chosen Desktop Environment (including `--swap-to-hyprland`) |
 | `PURGE_BAREBONES` | `--barebones`, `--fresh-start` | Reset system back to minimal Void `base-system` |
 | `VOID_TOOLS` | `--void-tools` | Void Linux power-user suite (`xtools`, `vsv`, `octoxbps`, `btop`, `fzf`, etc.) |
 | `APPS` | `--apps` | Core desktop applications (VLC, OBS, VSCode, LibreOffice, GIMP, Krita, etc.) |
