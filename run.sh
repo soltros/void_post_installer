@@ -6,6 +6,77 @@ echo " Modular Void Linux Desktop & Gaming Installer (dialog)"
 echo " Integrated with voidPM (vpm) - Multi-DE Support"
 echo "========================================================"
 
+# Allow viewing usage without root privileges
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    print_usage() {
+        cat << 'EOF'
+Modular Void Linux Desktop & Gaming Installer (dialog & CLI)
+Integrated with voidPM (vpm) - Multi-DE Support
+
+Usage: run.sh [OPTIONS]
+
+Options:
+  --all                     Install recommended suite (repos, vpm, portals, audio, GNOME, void-tools,
+                            apps, gaming, flatpaks, tailscale, time-sync, power, trim, fwupd, locale,
+                            fonts, services)
+  --gui, --dialog           Launch interactive dialog checklist menu (default when run without flags)
+  --repos                   Enable Multilib & Non-Free repositories
+  --vpm                     Download & install/update voidPM (vpm) binary to /usr/bin/vpm
+  --gpu-amd                 Install AMD GPU drivers, Mesa VA-API, and firmware
+  --gpu-intel               Install Intel GPU drivers, iHD VA-API, and microcode
+  --gpu-nvidia              Install NVIDIA GPU proprietary drivers, DKMS, and DRM modesetting
+  --portals                 Install XDG Desktop Portals & core daemons (D-Bus, elogind, NetworkManager)
+  --audio                   Configure PipeWire audio suite & WirePlumber
+  --realtime-audio          Configure PipeWire low-latency & rtkit realtime permissions
+  --kde                     Install KDE Plasma 6 & SDDM
+  --kde-tools               Install KDE CLI tools & XDG handlers
+  --gnome                   Install GNOME Shell & GDM
+  --xfce                    Install XFCE 4 & LightDM
+  --cinnamon                Install Cinnamon Desktop & LightDM
+  --mate                    Install MATE Desktop & LightDM
+  --lxqt                    Install LXQt Desktop & SDDM
+  --lxde                    Install LXDE Desktop & LightDM
+  --budgie                  Install Budgie Desktop & LightDM
+  --sway                    Install Sway Wayland & LightDM
+  --enlightenment           Install Enlightenment (E25) & LightDM
+  --swap-to-kde             Purge active DE and switch to KDE Plasma 6
+  --swap-to-gnome           Purge active DE and switch to GNOME
+  --swap-to-xfce            Purge active DE and switch to XFCE 4
+  --swap-to-cinnamon        Purge active DE and switch to Cinnamon
+  --swap-to-mate            Purge active DE and switch to MATE
+  --swap-to-lxqt            Purge active DE and switch to LXQt
+  --swap-to-lxde            Purge active DE and switch to LXDE
+  --swap-to-budgie          Purge active DE and switch to Budgie
+  --swap-to-sway            Purge active DE and switch to Sway
+  --swap-to-enlightenment   Purge active DE and switch to Enlightenment
+  --barebones, --fresh-start, --purge-to-barebones
+                            Purge all packages and DEs down to base-system
+  --void-tools, --community-tools
+                            Install Void Linux community power-user suite (xtools, vsv, btop, fzf, etc.)
+  --apps                    Install core desktop applications (VLC, OBS, VSCode, LibreOffice, GIMP, etc.)
+  --gaming                  Install Steam, Wine, Lutris, GameMode, MangoHud & gaming sysctl tweaks
+  --flatpaks                Install curated Flatpak application suite
+  --flatpak-themes          Synchronize host GTK/Qt themes to Flatpaks
+  --tailscale               Install Tailscale VPN
+  --time-sync               Configure openntpd NTP time synchronization
+  --power                   Configure power-profiles-daemon
+  --trim                    Configure weekly periodic SSD TRIM cron job
+  --fwupd                   Install fwupd firmware update daemon (LVFS)
+  --locale                  Configure system locale (en_US.UTF-8)
+  --zram                    Configure ZRAM compressed swap (zramen)
+  --fonts                   Install TrueType fonts (Noto & Liberation)
+  --zsh                     Configure Zsh with Oh My Zsh, Starship prompt & aliases
+  --catppuccin              Install Catppuccin universal theme suite system-wide
+  --session-config          Auto-configure default session presets
+  --maintenance             Run one-touch system maintenance (vpm update & clean)
+  --services                Configure Runit system daemons, socklog logging & user groups
+  -h, --help                Show this help message and exit
+EOF
+    }
+    print_usage
+    exit 0
+fi
+
 # Check root privilege
 if [ "$(id -u)" -ne 0 ]; then
     echo "Error: This script must be run as root (or via sudo)." >&2
@@ -16,7 +87,7 @@ fi
 if ! command -v dialog >/dev/null 2>&1; then
     echo "Installing dialog..."
     if command -v vpm >/dev/null 2>&1; then
-        echo y | vpm install dialog
+        echo y | vpm install dialog 2>/dev/null || xbps-install -Sy dialog
     else
         xbps-install -Sy dialog
     fi
@@ -25,7 +96,7 @@ fi
 # Helper functions leveraging voidPM (vpm)
 pkg_install() {
     if command -v vpm >/dev/null 2>&1; then
-        echo y | vpm install "$@"
+        echo y | vpm install "$@" 2>/dev/null || xbps-install -y "$@"
     else
         xbps-install -y "$@"
     fi
@@ -33,7 +104,7 @@ pkg_install() {
 
 pkg_update() {
     if command -v vpm >/dev/null 2>&1; then
-        echo y | vpm update
+        echo y | vpm update 2>/dev/null || xbps-install -Syu
     else
         xbps-install -Syu
     fi
@@ -53,7 +124,7 @@ service_enable() {
         vpm sv enable "$sname" 2>/dev/null || true
     fi
     if [ -d "/etc/sv/$sname" ]; then
-        ln -sf "/etc/sv/$sname" /var/service/
+        ln -sfn "/etc/sv/$sname" "/var/service/$sname"
     fi
 }
 
@@ -76,7 +147,7 @@ stop_all_display_managers() {
 
 # Detect non-root target user for group assignments
 TARGET_USER="${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}"
-if [ "$TARGET_USER" = "root" ]; then
+if [ "$TARGET_USER" = "root" ] || [ -z "$TARGET_USER" ]; then
     TARGET_USER="$(awk -F: '$3 >= 1000 && $3 < 60000 {print $1; exit}' /etc/passwd)"
 fi
 
@@ -116,7 +187,6 @@ mod_gpu_amd() {
         vulkan-loader-32bit \
         libvdpau-va-gl \
         linux-firmware-amd \
-        amd-ucode \
         libva-utils
 
     if ! grep -q "LIBVA_DRIVER_NAME=radeonsi" /etc/environment 2>/dev/null; then
@@ -126,6 +196,9 @@ LIBVA_DRIVER_NAME=radeonsi
 VDPAU_DRIVER=va_gl
 EOF
     fi
+
+    echo "Reconfiguring kernel initramfs for AMD firmware..."
+    xbps-reconfigure -fa 2>/dev/null || true
 }
 
 mod_gpu_intel() {
@@ -194,7 +267,6 @@ EOF
     xbps-reconfigure -fa 2>/dev/null || true
 }
 
-
 mod_portals() {
     echo "=== Installing XDG Desktop Portals & Core Daemons ==="
     pkg_install \
@@ -223,8 +295,12 @@ mod_audio() {
     mkdir -p /etc/pipewire/pipewire.conf.d
     if [ -f /usr/share/examples/wireplumber/10-wireplumber.conf ]; then
         ln -sf /usr/share/examples/wireplumber/10-wireplumber.conf /etc/pipewire/pipewire.conf.d/
+    elif [ -f /usr/share/examples/pipewire/10-wireplumber.conf ]; then
+        ln -sf /usr/share/examples/pipewire/10-wireplumber.conf /etc/pipewire/pipewire.conf.d/
     fi
-    if [ -f /usr/share/examples/wireplumber/20-pipewire-pulse.conf ]; then
+    if [ -f /usr/share/examples/pipewire/20-pipewire-pulse.conf ]; then
+        ln -sf /usr/share/examples/pipewire/20-pipewire-pulse.conf /etc/pipewire/pipewire.conf.d/
+    elif [ -f /usr/share/examples/wireplumber/20-pipewire-pulse.conf ]; then
         ln -sf /usr/share/examples/wireplumber/20-pipewire-pulse.conf /etc/pipewire/pipewire.conf.d/
     fi
 
@@ -489,6 +565,11 @@ purge_tailscale_packages() {
     pkg_remove tailscale
 }
 
+purge_system_modules_packages() {
+    echo "Purging system daemons & utilities (zramen, openntpd, power-profiles-daemon, fwupd, socklog)..."
+    pkg_remove zramen openntpd power-profiles-daemon fwupd socklog-void
+}
+
 purge_void_tools() {
     echo "Purging Void Linux community power-user tools..."
     pkg_remove \
@@ -514,6 +595,12 @@ mod_purge_to_barebones() {
     service_disable cupsd
     service_disable avahi-daemon
     service_disable rtkit
+    service_disable openntpd
+    service_disable power-profiles-daemon
+    service_disable zramen
+    service_disable zram
+    service_disable socklog-unix
+    service_disable nanoklogd
 
     echo "[1/6] Purging all Desktop Environments..."
     purge_kde_packages; purge_gnome_packages; purge_xfce_packages; purge_cinnamon_packages
@@ -526,12 +613,13 @@ mod_purge_to_barebones() {
     purge_void_tools
     purge_flatpaks
 
-    echo "[3/6] Purging audio, portals, GPU drivers & network daemons..."
+    echo "[3/6] Purging audio, portals, GPU drivers, system daemons & network daemons..."
     purge_audio_packages
     purge_portal_packages
     purge_gpu_packages
     purge_font_packages
     purge_tailscale_packages
+    purge_system_modules_packages
 
     echo "[4/6] Ensuring core base-system metapackage is intact..."
     pkg_install base-system
@@ -738,7 +826,6 @@ mod_time_sync() {
     echo "=== Configuring NTP Time Sync (openntpd) ==="
     pkg_install openntpd
 
-    mkdir -p /etc/openntpd
     if [ ! -f /etc/ntpd.conf ]; then
         cat << 'EOF' > /etc/ntpd.conf
 # NTP servers for time synchronization
@@ -750,7 +837,7 @@ EOF
 
     # Sync clock immediately if daemon isn't already running
     if ! pgrep -x openntpd >/dev/null 2>&1; then
-        ntpd -s 2>/dev/null || true
+        openntpd -s 2>/dev/null || ntpd -s 2>/dev/null || true
     fi
 
     echo "✓ NTP time sync configured and enabled."
@@ -767,12 +854,13 @@ mod_trim() {
     echo "=== Configuring Periodic SSD TRIM ==="
     pkg_install util-linux
 
-    if [ ! -f /etc/cron.daily/fstrim ]; then
-        cat << 'EOF' > /etc/cron.daily/fstrim
+    mkdir -p /etc/cron.weekly /etc/cron.daily
+    if [ ! -f /etc/cron.weekly/fstrim ]; then
+        cat << 'EOF' > /etc/cron.weekly/fstrim
 #!/bin/sh
 /usr/bin/fstrim --all --verbose 2>/dev/null || true
 EOF
-        chmod 755 /etc/cron.daily/fstrim
+        chmod 755 /etc/cron.weekly/fstrim
     fi
 
     echo "✓ Weekly SSD TRIM cron job installed."
@@ -781,36 +869,45 @@ EOF
 mod_fwupd() {
     echo "=== Installing Firmware Update Daemon (fwupd) ==="
     pkg_install fwupd
-    service_enable fwupd
-    echo "✓ fwupd installed and enabled for LVFS firmware updates."
+    if [ -d "/etc/sv/fwupd" ]; then
+        service_enable fwupd
+    fi
+    echo "✓ fwupd installed and ready for LVFS firmware updates."
 }
 
 mod_locale() {
     echo "=== Configuring System Locale ==="
-    if ! grep -q "^en_US.UTF-8 UTF-8" /etc/default/libc-locales 2>/dev/null; then
-        echo "en_US.UTF-8 UTF-8" >> /etc/default/libc-locales
-        xbps-reconfigure -fa 2>/dev/null || true
+    if [ -f /etc/default/libc-locales ]; then
+        sed -i 's/^#\s*en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/default/libc-locales 2>/dev/null || true
+        if ! grep -q "^en_US.UTF-8 UTF-8" /etc/default/libc-locales 2>/dev/null; then
+            echo "en_US.UTF-8 UTF-8" >> /etc/default/libc-locales
+        fi
+        xbps-reconfigure -f glibc-locales 2>/dev/null || xbps-reconfigure -fa 2>/dev/null || true
+    fi
+
+    if [ ! -f /etc/locale.conf ] || ! grep -q "^LANG=" /etc/locale.conf; then
+        echo "LANG=en_US.UTF-8" > /etc/locale.conf
     fi
     echo "✓ Locale en_US.UTF-8 configured."
 }
 
 mod_zram() {
     echo "=== Configuring ZRAM Compressed Swap ==="
-    pkg_install zramctl
+    # Clean up any legacy or broken custom zram runit service
+    service_disable zram 2>/dev/null || true
+    rm -rf /etc/sv/zram /var/service/zram 2>/dev/null || true
 
-    mkdir -p /etc/sv/zram
-    cat << 'EOF' > /etc/sv/zram/run
-#!/bin/sh
-exec 2>&1
-[ -r conf ] && . ./conf
-exec zramctl -a zram0 -s 2G
-mkswap /dev/zram0
-swapon /dev/zram0
-EOF
-    chmod 755 /etc/sv/zram/run
+    pkg_install zramen
 
-    service_enable zram
-    echo "✓ ZRAM 2G compressed swap enabled."
+    # Ensure zram kernel module is loaded
+    modprobe zram 2>/dev/null || true
+    if [ ! -f /etc/modules-load.d/zram.conf ]; then
+        mkdir -p /etc/modules-load.d
+        echo "zram" > /etc/modules-load.d/zram.conf
+    fi
+
+    service_enable zramen
+    echo "✓ ZRAM compressed swap service (zramen) configured and enabled."
 }
 
 mod_fonts() {
@@ -822,6 +919,7 @@ mod_zsh() {
     echo "=== [Setup Zsh Shell, Oh My Zsh & Starship Prompt] ==="
     local u_home
     u_home=$(getent passwd "$TARGET_USER" | cut -d: -f6 || echo "/home/$TARGET_USER")
+    [ -z "$u_home" ] && u_home="/home/$TARGET_USER"
     
     echo "Installing Zsh dependencies via vpm..."
     pkg_install zsh git curl wget tar unzip starship
@@ -829,22 +927,24 @@ mod_zsh() {
     local zsh_bin
     zsh_bin=$(command -v zsh || echo "/usr/bin/zsh")
 
-    if [ ! -d "$u_home/.oh-my-zsh" ]; then
+    if [ ! -d "$u_home/.oh-my-zsh" ] && [ -n "$TARGET_USER" ]; then
         echo "Installing Oh My Zsh for $TARGET_USER..."
-        sudo -H -u "$TARGET_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
+        su - "$TARGET_USER" -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended 2>/dev/null || \
+        sudo -H -u "$TARGET_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended 2>/dev/null || true
     fi
 
     local zsh_custom="$u_home/.oh-my-zsh/custom"
-    sudo -H -u "$TARGET_USER" mkdir -p "$zsh_custom/plugins"
+    if [ -n "$TARGET_USER" ]; then
+        mkdir -p "$zsh_custom/plugins"
+        if [ ! -d "$zsh_custom/plugins/zsh-autosuggestions" ]; then
+            echo "Cloning zsh-autosuggestions..."
+            git clone --quiet https://github.com/zsh-users/zsh-autosuggestions "$zsh_custom/plugins/zsh-autosuggestions" 2>/dev/null || true
+        fi
 
-    if [ ! -d "$zsh_custom/plugins/zsh-autosuggestions" ]; then
-        echo "Cloning zsh-autosuggestions..."
-        sudo -H -u "$TARGET_USER" git clone https://github.com/zsh-users/zsh-autosuggestions "$zsh_custom/plugins/zsh-autosuggestions" || true
-    fi
-
-    if [ ! -d "$zsh_custom/plugins/zsh-syntax-highlighting" ]; then
-        echo "Cloning zsh-syntax-highlighting..."
-        sudo -H -u "$TARGET_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting "$zsh_custom/plugins/zsh-syntax-highlighting" || true
+        if [ ! -d "$zsh_custom/plugins/zsh-syntax-highlighting" ]; then
+            echo "Cloning zsh-syntax-highlighting..."
+            git clone --quiet https://github.com/zsh-users/zsh-syntax-highlighting "$zsh_custom/plugins/zsh-syntax-highlighting" 2>/dev/null || true
+        fi
     fi
 
     if [ -f "$u_home/.zshrc" ]; then
@@ -925,13 +1025,13 @@ if command -v starship &> /dev/null; then
 fi
 ZSH_EOF
 
-    chown "$TARGET_USER:$TARGET_USER" "$u_home/.zshrc" 2>/dev/null || true
-
-    if ! grep -qx "$zsh_bin" /etc/shells; then
-        echo "$zsh_bin" >> /etc/shells
+    if [ -n "$TARGET_USER" ]; then
+        chown -R "$TARGET_USER:$TARGET_USER" "$u_home/.zshrc" "$u_home/.oh-my-zsh" 2>/dev/null || true
+        if ! grep -qx "$zsh_bin" /etc/shells; then
+            echo "$zsh_bin" >> /etc/shells
+        fi
+        usermod -s "$zsh_bin" "$TARGET_USER" || true
     fi
-
-    usermod -s "$zsh_bin" "$TARGET_USER" || true
     echo "✓ Zsh setup complete for $TARGET_USER"
 }
 
@@ -963,7 +1063,7 @@ mod_catppuccin() {
             for f in 1 2 3 4; do
                 for a in $(seq 1 14); do
                     for w in 1 2; do
-                        ./install.sh -q --no-cursor "$f" "$a" "$w" >/dev/null 2>&1 || true
+                        XDG_DATA_HOME="/usr/share" ./install.sh -q --no-cursor "$f" "$a" "$w" >/dev/null 2>&1 || true
                     done
                 done
             done
@@ -1150,6 +1250,7 @@ mod_maintenance() {
 mod_vpm() {
     echo "=== [Installing / Updating voidPM (vpm) Package Manager Helper] ==="
     local target_bin="/usr/bin/vpm"
+    local symlink_bin="/usr/bin/voidpm"
     local tmp_vpm="/tmp/vpm_download_$$"
 
     if [ -f "$target_bin" ]; then
@@ -1160,34 +1261,49 @@ mod_vpm() {
 
     echo "Downloading latest vpm binary from soltros/voidPM repository..."
     
-    local download_url=""
+    local download_urls=(
+        "https://github.com/soltros/voidPM/releases/latest/download/vpm"
+        "https://raw.githubusercontent.com/soltros/voidPM/main/vpm"
+    )
+
+    # Query GitHub releases API for specific vpm binary asset
     local release_json
     release_json=$(curl -sSL https://api.github.com/repos/soltros/voidPM/releases/latest 2>/dev/null || echo "")
     if echo "$release_json" | grep -q "browser_download_url"; then
-        download_url=$(echo "$release_json" | grep "browser_download_url" | head -n1 | cut -d '"' -f 4)
+        local api_vpm_url
+        api_vpm_url=$(echo "$release_json" | grep "browser_download_url" | grep '/vpm"' | head -n1 | cut -d '"' -f 4 || echo "")
+        if [ -n "$api_vpm_url" ]; then
+            download_urls=("$api_vpm_url" "${download_urls[@]}")
+        fi
     fi
 
-    if [ -z "$download_url" ]; then
-        download_url="https://raw.githubusercontent.com/soltros/voidPM/main/vpm"
-    fi
+    local downloaded=0
+    for url in "${download_urls[@]}"; do
+        echo "Fetching binary from: $url"
+        rm -f "$tmp_vpm"
+        if curl -fsSL "$url" -o "$tmp_vpm" 2>/dev/null && [ -s "$tmp_vpm" ]; then
+            chmod +x "$tmp_vpm"
+            if "$tmp_vpm" --help >/dev/null 2>&1 || file "$tmp_vpm" 2>/dev/null | grep -q "ELF"; then
+                mv -f "$tmp_vpm" "$target_bin"
+                chown root:root "$target_bin"
+                chmod 755 "$target_bin"
+                ln -sf "$target_bin" "$symlink_bin"
+                echo "✓ voidPM (vpm) installed successfully to $target_bin and symlinked to $symlink_bin"
+                downloaded=1
+                break
+            else
+                echo "[!] File downloaded from $url is not a valid executable binary. Trying fallback..."
+                rm -f "$tmp_vpm"
+            fi
+        fi
+    done
 
-    echo "Fetching binary from: $download_url"
-    curl -fsSL "$download_url" -o "$tmp_vpm"
-
-    if [ -s "$tmp_vpm" ]; then
-        chmod +x "$tmp_vpm"
-        mv -f "$tmp_vpm" "$target_bin"
-        chown root:root "$target_bin"
-        chmod 755 "$target_bin"
-        echo "✓ voidPM (vpm) force-updated & installed successfully to $target_bin"
-    else
-        echo "[ERROR] Failed to download vpm binary from $download_url"
+    if [ "$downloaded" -ne 1 ]; then
+        echo "[ERROR] Failed to download a valid vpm binary from all sources."
         rm -f "$tmp_vpm"
         return 1
     fi
 }
-
-
 
 mod_services() {
     echo "=== Configuring Runit System Daemons, Socklog Logging & Permissions ==="
@@ -1196,29 +1312,97 @@ mod_services() {
     echo "Installing socklog-void for system logging..."
     pkg_install socklog-void
 
-    for service in dbus elogind NetworkManager tailscaled bluetoothd cupsd avahi-daemon socklog-unix nanoklogd; do
+    for service in dbus elogind NetworkManager tailscaled bluetoothd cupsd avahi-daemon socklog-unix nanoklogd openntpd power-profiles-daemon zramen; do
         if [ -d "/etc/sv/$service" ]; then
             service_enable "$service"
         fi
     done
 
-    sv restart dbus || true
-    sv restart elogind || true
+    sv restart dbus 2>/dev/null || true
+    sv restart elogind 2>/dev/null || true
 
     if [ -n "$TARGET_USER" ] && id "$TARGET_USER" >/dev/null 2>&1; then
-        groupadd -r socklog 2>/dev/null || true
-        usermod -aG video,audio,storage,network,input,wheel,bluetooth,lpadmin,socklog "$TARGET_USER" || true
-        su - "$TARGET_USER" -c "xdg-user-dirs-update" || true
+        for g in video audio storage network input wheel bluetooth lpadmin socklog kvm; do
+            getent group "$g" >/dev/null 2>&1 || groupadd -r "$g" 2>/dev/null || true
+            usermod -aG "$g" "$TARGET_USER" 2>/dev/null || true
+        done
+        su - "$TARGET_USER" -c "xdg-user-dirs-update" 2>/dev/null || true
     fi
 
     if command -v flatpak >/dev/null 2>&1; then
         flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
-        flatpak update --appstream || true
+        flatpak update --appstream 2>/dev/null || true
     fi
 
     if command -v appstreamcli >/dev/null 2>&1; then
-        appstreamcli refresh --force || true
+        appstreamcli refresh --force 2>/dev/null || true
     fi
+}
+
+print_usage() {
+    cat << 'EOF'
+Modular Void Linux Desktop & Gaming Installer (dialog & CLI)
+Integrated with voidPM (vpm) - Multi-DE Support
+
+Usage: run.sh [OPTIONS]
+
+Options:
+  --all                     Install recommended suite (repos, vpm, portals, audio, GNOME, void-tools,
+                            apps, gaming, flatpaks, tailscale, time-sync, power, trim, fwupd, locale,
+                            fonts, services)
+  --gui, --dialog           Launch interactive dialog checklist menu (default when run without flags)
+  --repos                   Enable Multilib & Non-Free repositories
+  --vpm                     Download & install/update voidPM (vpm) binary to /usr/bin/vpm
+  --gpu-amd                 Install AMD GPU drivers, Mesa VA-API, and firmware
+  --gpu-intel               Install Intel GPU drivers, iHD VA-API, and microcode
+  --gpu-nvidia              Install NVIDIA GPU proprietary drivers, DKMS, and DRM modesetting
+  --portals                 Install XDG Desktop Portals & core daemons (D-Bus, elogind, NetworkManager)
+  --audio                   Configure PipeWire audio suite & WirePlumber
+  --realtime-audio          Configure PipeWire low-latency & rtkit realtime permissions
+  --kde                     Install KDE Plasma 6 & SDDM
+  --kde-tools               Install KDE CLI tools & XDG handlers
+  --gnome                   Install GNOME Shell & GDM
+  --xfce                    Install XFCE 4 & LightDM
+  --cinnamon                Install Cinnamon Desktop & LightDM
+  --mate                    Install MATE Desktop & LightDM
+  --lxqt                    Install LXQt Desktop & SDDM
+  --lxde                    Install LXDE Desktop & LightDM
+  --budgie                  Install Budgie Desktop & LightDM
+  --sway                    Install Sway Wayland & LightDM
+  --enlightenment           Install Enlightenment (E25) & LightDM
+  --swap-to-kde             Purge active DE and switch to KDE Plasma 6
+  --swap-to-gnome           Purge active DE and switch to GNOME
+  --swap-to-xfce            Purge active DE and switch to XFCE 4
+  --swap-to-cinnamon        Purge active DE and switch to Cinnamon
+  --swap-to-mate            Purge active DE and switch to MATE
+  --swap-to-lxqt            Purge active DE and switch to LXQt
+  --swap-to-lxde            Purge active DE and switch to LXDE
+  --swap-to-budgie          Purge active DE and switch to Budgie
+  --swap-to-sway            Purge active DE and switch to Sway
+  --swap-to-enlightenment   Purge active DE and switch to Enlightenment
+  --barebones, --fresh-start, --purge-to-barebones
+                            Purge all packages and DEs down to base-system
+  --void-tools, --community-tools
+                            Install Void Linux community power-user suite (xtools, vsv, btop, fzf, etc.)
+  --apps                    Install core desktop applications (VLC, OBS, VSCode, LibreOffice, GIMP, etc.)
+  --gaming                  Install Steam, Wine, Lutris, GameMode, MangoHud & gaming sysctl tweaks
+  --flatpaks                Install curated Flatpak application suite
+  --flatpak-themes          Synchronize host GTK/Qt themes to Flatpaks
+  --tailscale               Install Tailscale VPN
+  --time-sync               Configure openntpd NTP time synchronization
+  --power                   Configure power-profiles-daemon
+  --trim                    Configure weekly periodic SSD TRIM cron job
+  --fwupd                   Install fwupd firmware update daemon (LVFS)
+  --locale                  Configure system locale (en_US.UTF-8)
+  --zram                    Configure ZRAM compressed swap (zramen)
+  --fonts                   Install TrueType fonts (Noto & Liberation)
+  --zsh                     Configure Zsh with Oh My Zsh, Starship prompt & aliases
+  --catppuccin              Install Catppuccin universal theme suite system-wide
+  --session-config          Auto-configure default session presets
+  --maintenance             Run one-touch system maintenance (vpm update & clean)
+  --services                Configure Runit system daemons, socklog logging & user groups
+  -h, --help                Show this help message and exit
+EOF
 }
 
 # --- Selection Dialog Logic ---
@@ -1240,6 +1424,7 @@ show_dialog_checklist() {
         CHOICES=$(dialog --clear --stdout --backtitle "Void Linux Installer & Desktop Swapper (GPU: $GPU_TYPE | vpm: active)" \
             --checklist "Select tasks to run (UP/DOWN to scroll, SPACE to check/uncheck, ENTER to confirm):" 28 92 19 \
             "REPOS"              "System: Enable Multilib & Non-Free Repositories" ON \
+            "VPM"                "System: Install/Update voidPM (vpm) Binary directly to /usr/bin" ON \
             "GPU_AMD"            "Hardware: AMD GPU Drivers & Mesa VA-API" "$AMD_STATE" \
             "GPU_INTEL"          "Hardware: Intel GPU Drivers & iHD VA-API" "$INTEL_STATE" \
             "GPU_NVIDIA"         "Hardware: NVIDIA GPU Proprietary Drivers & DKMS" "$NVIDIA_STATE" \
@@ -1274,33 +1459,41 @@ show_dialog_checklist() {
             "FLATPAK_THEMES"     "Theme: Sync Host GTK/Qt & Catppuccin to Flatpaks" ON \
             "ZSH"                "Shell: Zsh + Oh My Zsh + Starship & vpm Aliases" ON \
             "CATPPUCCIN"         "Theme: Catppuccin Universal Theme Suite & Wallpapers" ON \
-            "VPM"                "System: Install voidPM (vpm) Binary directly to /usr/bin" ON \
             "TAILSCALE"          "Network: Tailscale Mesh VPN" ON \
             "TIME_SYNC"          "System: NTP Time Sync (openntpd)" ON \
             "POWER"              "System: Power Profiles Daemon" ON \
             "TRIM"               "System: Periodic SSD TRIM" ON \
             "FWUPD"              "System: Firmware Update Daemon (LVFS)" ON \
             "LOCALE"             "System: Locale Generation (en_US.UTF-8)" ON \
-            "ZRAM"               "System: ZRAM Compressed Swap" OFF \
+            "ZRAM"               "System: ZRAM Compressed Swap (zramen)" OFF \
             "FONTS"              "System: TrueType Fonts (Noto & Liberation)" ON \
             "SESSION_CONFIG"     "System: Auto-Configure Default Session Presets" ON \
             "MAINTENANCE"        "System: One-Touch Maintenance (vpm update & clean)" OFF \
             "SERVICES"           "System: Configure Runit Services & Permissions" ON 2>&1) || exit 0
 
-
         eval "SELECTED_TASKS=($CHOICES)"
     else
         echo "Defaulting to detected GPU tasks ($GPU_TYPE)..."
-        SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "TIME_SYNC" "POWER" "TRIM" "FWUPD" "LOCALE" "FONTS" "SERVICES")
+        SELECTED_TASKS=("REPOS" "VPM" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "TIME_SYNC" "POWER" "TRIM" "FWUPD" "LOCALE" "FONTS" "SERVICES")
     fi
 }
 
 # CLI Argument parsing
+SELECTED_TASKS=()
 if [ "$#" -gt 0 ]; then
     for arg in "$@"; do
         case $arg in
-            --all)                   SELECTED_TASKS=("REPOS" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "TIME_SYNC" "POWER" "TRIM" "FWUPD" "LOCALE" "FONTS" "SERVICES") ;;
+            --all)                   SELECTED_TASKS=("REPOS" "VPM" "PORTALS" "AUDIO" "GNOME" "VOID_TOOLS" "APPS" "GAMING" "FLATPAKS" "TAILSCALE" "TIME_SYNC" "POWER" "TRIM" "FWUPD" "LOCALE" "FONTS" "SERVICES") ;;
+            --repos)                 SELECTED_TASKS+=("REPOS") ;;
+            --vpm)                   SELECTED_TASKS+=("VPM") ;;
+            --gpu-amd)               SELECTED_TASKS+=("GPU_AMD") ;;
+            --gpu-intel)             SELECTED_TASKS+=("GPU_INTEL") ;;
+            --gpu-nvidia)            SELECTED_TASKS+=("GPU_NVIDIA") ;;
+            --portals)               SELECTED_TASKS+=("PORTALS") ;;
+            --audio)                 SELECTED_TASKS+=("AUDIO") ;;
+            --realtime-audio)        SELECTED_TASKS+=("AUDIO_REALTIME") ;;
             --kde)                   SELECTED_TASKS+=("KDE") ;;
+            --kde-tools)             SELECTED_TASKS+=("KDE_TOOLS") ;;
             --gnome)                 SELECTED_TASKS+=("GNOME") ;;
             --xfce)                  SELECTED_TASKS+=("XFCE") ;;
             --cinnamon)              SELECTED_TASKS+=("CINNAMON") ;;
@@ -1322,27 +1515,30 @@ if [ "$#" -gt 0 ]; then
             --swap-to-enlightenment) SELECTED_TASKS+=("SWAP_ENLIGHTENMENT") ;;
             --barebones|--fresh-start|--purge-to-barebones) SELECTED_TASKS+=("PURGE_BAREBONES") ;;
             --void-tools|--community-tools) SELECTED_TASKS+=("VOID_TOOLS") ;;
-            --gpu-amd)               SELECTED_TASKS+=("GPU_AMD") ;;
-            --gpu-intel)             SELECTED_TASKS+=("GPU_INTEL") ;;
-            --gpu-nvidia)            SELECTED_TASKS+=("GPU_NVIDIA") ;;
+            --apps)                  SELECTED_TASKS+=("APPS") ;;
+            --gaming)                SELECTED_TASKS+=("GAMING") ;;
             --flatpaks)              SELECTED_TASKS+=("FLATPAKS") ;;
             --flatpak-themes)        SELECTED_TASKS+=("FLATPAK_THEMES") ;;
-            --gaming)                SELECTED_TASKS+=("GAMING") ;;
             --zsh)                   SELECTED_TASKS+=("ZSH") ;;
             --catppuccin)            SELECTED_TASKS+=("CATPPUCCIN") ;;
-            --vpm)                   SELECTED_TASKS+=("VPM") ;;
-            --time-sync)           SELECTED_TASKS+=("TIME_SYNC") ;;
-            --power)               SELECTED_TASKS+=("POWER") ;;
-            --trim)                SELECTED_TASKS+=("TRIM") ;;
-            --fwupd)               SELECTED_TASKS+=("FWUPD") ;;
-            --locale)              SELECTED_TASKS+=("LOCALE") ;;
-            --zram)                SELECTED_TASKS+=("ZRAM") ;;
-            --audio)               SELECTED_TASKS+=("AUDIO") ;;
-            --realtime-audio)        SELECTED_TASKS+=("AUDIO_REALTIME") ;;
+            --tailscale)             SELECTED_TASKS+=("TAILSCALE") ;;
+            --time-sync)             SELECTED_TASKS+=("TIME_SYNC") ;;
+            --power)                 SELECTED_TASKS+=("POWER") ;;
+            --trim)                  SELECTED_TASKS+=("TRIM") ;;
+            --fwupd)                 SELECTED_TASKS+=("FWUPD") ;;
+            --locale)                SELECTED_TASKS+=("LOCALE") ;;
+            --zram)                  SELECTED_TASKS+=("ZRAM") ;;
+            --fonts)                 SELECTED_TASKS+=("FONTS") ;;
             --session-config)        SELECTED_TASKS+=("SESSION_CONFIG") ;;
             --maintenance)           SELECTED_TASKS+=("MAINTENANCE") ;;
+            --services)              SELECTED_TASKS+=("SERVICES") ;;
             --gui|--dialog)          show_dialog_checklist ;;
-
+            -h|--help)               print_usage; exit 0 ;;
+            *)
+                echo "Unknown option: $arg" >&2
+                print_usage
+                exit 1
+                ;;
         esac
     done
 fi
@@ -1351,21 +1547,101 @@ if [ "${#SELECTED_TASKS[@]}" -eq 0 ]; then
     show_dialog_checklist
 fi
 
+# Canonical execution order to satisfy module prerequisites
+CANONICAL_TASKS=(
+    "REPOS"
+    "VPM"
+    "LOCALE"
+    "TIME_SYNC"
+    "POWER"
+    "ZRAM"
+    "TRIM"
+    "FWUPD"
+    "GPU_AMD"
+    "GPU_INTEL"
+    "GPU_NVIDIA"
+    "PORTALS"
+    "AUDIO"
+    "AUDIO_REALTIME"
+    "PURGE_BAREBONES"
+    "SWAP_KDE"
+    "SWAP_GNOME"
+    "SWAP_XFCE"
+    "SWAP_CINNAMON"
+    "SWAP_MATE"
+    "SWAP_LXQT"
+    "SWAP_LXDE"
+    "SWAP_BUDGIE"
+    "SWAP_SWAY"
+    "SWAP_ENLIGHTENMENT"
+    "KDE"
+    "KDE_TOOLS"
+    "GNOME"
+    "XFCE"
+    "CINNAMON"
+    "MATE"
+    "LXQT"
+    "LXDE"
+    "BUDGIE"
+    "SWAY"
+    "ENLIGHTENMENT"
+    "FONTS"
+    "VOID_TOOLS"
+    "APPS"
+    "GAMING"
+    "FLATPAKS"
+    "FLATPAK_THEMES"
+    "CATPPUCCIN"
+    "ZSH"
+    "TAILSCALE"
+    "SESSION_CONFIG"
+    "SERVICES"
+    "MAINTENANCE"
+)
+
+EXECUTION_PLAN=()
+for canon in "${CANONICAL_TASKS[@]}"; do
+    for sel in "${SELECTED_TASKS[@]}"; do
+        if [ "$canon" = "$sel" ]; then
+            EXECUTION_PLAN+=("$canon")
+            break
+        fi
+    done
+done
+
 clear 2>/dev/null || true
 echo ""
 echo "Detected Hardware GPU: $GPU_TYPE"
-echo "Executing selected installation modules: ${SELECTED_TASKS[*]}"
+echo "Executing selected installation modules: ${EXECUTION_PLAN[*]}"
 echo ""
 
-for task in "${SELECTED_TASKS[@]}"; do
+for task in "${EXECUTION_PLAN[@]}"; do
     case "$task" in
         REPOS)              mod_repos ;;
+        VPM)                mod_vpm ;;
+        LOCALE)             mod_locale ;;
+        TIME_SYNC)          mod_time_sync ;;
+        POWER)              mod_power ;;
+        ZRAM)               mod_zram ;;
+        TRIM)               mod_trim ;;
+        FWUPD)              mod_fwupd ;;
         GPU_AMD)            mod_gpu_amd ;;
         GPU_INTEL)          mod_gpu_intel ;;
         GPU_NVIDIA)         mod_gpu_nvidia ;;
         PORTALS)            mod_portals ;;
         AUDIO)              mod_audio ;;
         AUDIO_REALTIME)     mod_realtime_audio ;;
+        PURGE_BAREBONES)    mod_purge_to_barebones ;;
+        SWAP_KDE)           mod_swap_to_kde ;;
+        SWAP_GNOME)         mod_swap_to_gnome ;;
+        SWAP_XFCE)          mod_swap_to_xfce ;;
+        SWAP_CINNAMON)      mod_swap_to_cinnamon ;;
+        SWAP_MATE)          mod_swap_to_mate ;;
+        SWAP_LXQT)          mod_swap_to_lxqt ;;
+        SWAP_LXDE)          mod_swap_to_lxde ;;
+        SWAP_BUDGIE)        mod_swap_to_budgie ;;
+        SWAP_SWAY)          mod_swap_to_sway ;;
+        SWAP_ENLIGHTENMENT) mod_swap_to_enlightenment ;;
         KDE)                mod_kde ;;
         KDE_TOOLS)          mod_kde_tools ;;
         GNOME)              mod_gnome ;;
@@ -1377,40 +1653,20 @@ for task in "${SELECTED_TASKS[@]}"; do
         BUDGIE)             mod_budgie ;;
         SWAY)               mod_sway ;;
         ENLIGHTENMENT)      mod_enlightenment ;;
-        SWAP_KDE)           mod_swap_to_kde ;;
-        SWAP_GNOME)         mod_swap_to_gnome ;;
-        SWAP_XFCE)          mod_swap_to_xfce ;;
-        SWAP_CINNAMON)      mod_swap_to_cinnamon ;;
-        SWAP_MATE)          mod_swap_to_mate ;;
-        SWAP_LXQT)          mod_swap_to_lxqt ;;
-        SWAP_LXDE)          mod_swap_to_lxde ;;
-        SWAP_BUDGIE)        mod_swap_to_budgie ;;
-        SWAP_SWAY)          mod_swap_to_sway ;;
-        SWAP_ENLIGHTENMENT) mod_swap_to_enlightenment ;;
-        PURGE_BAREBONES)    mod_purge_to_barebones ;;
+        FONTS)              mod_fonts ;;
         VOID_TOOLS)         mod_void_tools ;;
         APPS)               mod_apps ;;
         GAMING)             mod_gaming ;;
         FLATPAKS)           mod_flatpaks ;;
         FLATPAK_THEMES)     mod_flatpak_themes ;;
-        ZSH)                mod_zsh ;;
         CATPPUCCIN)         mod_catppuccin ;;
-        VPM)                mod_vpm ;;
+        ZSH)                mod_zsh ;;
         TAILSCALE)          mod_tailscale ;;
-        TIME_SYNC)          mod_time_sync ;;
-        POWER)              mod_power ;;
-        TRIM)               mod_trim ;;
-        FWUPD)              mod_fwupd ;;
-        LOCALE)             mod_locale ;;
-        ZRAM)               mod_zram ;;
-        FONTS)              mod_fonts ;;
         SESSION_CONFIG)     mod_session_config ;;
-        MAINTENANCE)        mod_maintenance ;;
         SERVICES)           mod_services ;;
+        MAINTENANCE)        mod_maintenance ;;
     esac
 done
-
-
 
 echo "========================================================"
 echo " Selected tasks executed successfully!"
